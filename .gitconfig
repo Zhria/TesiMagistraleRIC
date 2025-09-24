@@ -1,8 +1,10 @@
 [user]
-	name = Zhria3
+	name = Zhria
 	email = traka.zakaria@gmail.com
 [pack]
 	threads = 4
 	window = 0
 	windowMemory = 200m
 	packSizeLimit = 200m
+[credential]
+	helper = /usr/share/doc/git/contrib/credential/libsecret/git-credential-libsecret
