@@ -1,6 +1,0 @@
-.minikube/
-.vscode-server/
-installer/kubectl
-linux-386/
-ric-plt-ric-dep/bin/
-ric-plt-ric-dep/linux-386/
