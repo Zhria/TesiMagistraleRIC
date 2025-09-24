@@ -1,5 +1,6 @@
 .minikube/
 .gitconfig
+.git-credentials
 .vscode-server/
 .ssh/
 .config/
