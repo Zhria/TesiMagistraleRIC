@@ -640,3 +640,8 @@ Error: plugin "servecm" exited with error
 2025-09-24T13:23:57.055Z	[34mINFO[0m	[202] Request served	{"path": "/charts/charts/ric-common-3.3.2.tgz", "comment": "", "clientIP": "127.0.0.1", "method": "GET", "statusCode": 200, "latency": "356.665µs", "reqID": "aad9dbe7-7d2e-4e08-885c-3e1694695cf3"}
 2025-09-24T13:24:05.568Z	[34mINFO[0m	[203] Request served	{"path": "/charts/index.yaml", "comment": "", "clientIP": "127.0.0.1", "method": "GET", "statusCode": 200, "latency": "69.93µs", "reqID": "5c13c062-201c-4211-b40b-9ac0ef4bc7b7"}
 2025-09-24T13:24:05.570Z	[34mINFO[0m	[204] Request served	{"path": "/charts/charts/ric-common-3.3.2.tgz", "comment": "", "clientIP": "127.0.0.1", "method": "GET", "statusCode": 200, "latency": "411.391µs", "reqID": "99de2e71-74ed-410a-bd9d-c7a089be4563"}
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/ztraka/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/ztraka/.kube/config
+2025-09-24T15:33:44.907Z	[34mINFO[0m	Starting ChartMuseum	{"host": "0.0.0.0", "port": 8879}
+2025-09-24T15:33:44.907Z	[31mFATAL[0m	listen tcp 0.0.0.0:8879: bind: address already in use
+Error: plugin "servecm" exited with error

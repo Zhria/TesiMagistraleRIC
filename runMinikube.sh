@@ -1,6 +1,6 @@
 set -euo pipefail
 
-#minikube delete;
+minikube delete;
 
 REG_IP="${1:-192.168.17.70}"   # IP dell’host dove gira il registry
 REG_PORT="${2:-5000}"          # Porta del registry
