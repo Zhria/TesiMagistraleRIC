@@ -1,5 +1,13 @@
 .minikube/
 .vscode-server/
+.ssh/
+.config/
+.cache/
+.docker/
+.dotnet/
+.kube/
+.local/
+.venvs/
 installer/kubectl
 linux-386/
 ric-plt-ric-dep/bin/
