@@ -1,3 +1,8 @@
 [user]
 	name = Zhria3
 	email = traka.zakaria@gmail.com
+[pack]
+	threads = 4
+	window = 0
+	windowMemory = 200m
+	packSizeLimit = 200m
