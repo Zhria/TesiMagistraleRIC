@@ -6,8 +6,16 @@
 .docker/
 .dotnet/
 .kube/
-.local/
+.local/share/
 .venvs/
+bin/
+lib/
+.bash_history
+.bash_logout
+.bashrc
+.lesshst
+.profile
+
 installer/kubectl
 linux-386/
 ric-plt-ric-dep/bin/
