@@ -1,0 +1,29 @@
+image:
+  repository: <registry>/my-xapp
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8080        # se esponi HTTP/metrics; altrimenti puoi rimuovere il Service
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+env:  # variabili d'ambiente per la xApp
+  - name: LOG_LEVEL
+    value: "INFO"
+  # Aggiungi qui eventuali endpoint/secret del RIC, es:
+  # - name: RIC_ENDPOINT
+  #   value: "http://service-ricplt-submgr.ricplt:8088"  # esempio
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
