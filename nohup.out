@@ -645,3 +645,13 @@ WARNING: Kubernetes configuration file is world-readable. This is insecure. Loca
 2025-09-24T15:33:44.907Z	[34mINFO[0m	Starting ChartMuseum	{"host": "0.0.0.0", "port": 8879}
 2025-09-24T15:33:44.907Z	[31mFATAL[0m	listen tcp 0.0.0.0:8879: bind: address already in use
 Error: plugin "servecm" exited with error
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/ztraka/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/ztraka/.kube/config
+2025-09-24T15:54:20.958Z	[34mINFO[0m	Starting ChartMuseum	{"host": "0.0.0.0", "port": 8879}
+2025-09-24T15:54:20.959Z	[31mFATAL[0m	listen tcp 0.0.0.0:8879: bind: address already in use
+Error: plugin "servecm" exited with error
+WARNING: Kubernetes configuration file is group-readable. This is insecure. Location: /home/ztraka/.kube/config
+WARNING: Kubernetes configuration file is world-readable. This is insecure. Location: /home/ztraka/.kube/config
+2025-09-25T19:50:52.200Z	[34mINFO[0m	Starting ChartMuseum	{"host": "0.0.0.0", "port": 8879}
+2025-09-25T19:50:52.200Z	[31mFATAL[0m	listen tcp 0.0.0.0:8879: bind: address already in use
+Error: plugin "servecm" exited with error
