@@ -441,16 +441,17 @@ next_version="$(increment_patch_version "${current_version}")"
 
 if [[ "${SKIP_BUILD}" == "true" ]]; then
   available_version="$(determine_latest_available_image_version "${TARGET_APPS[@]}")"
-  if [[ -n "${available_version}" && version_gt "${available_version}" "${current_version}" ]]; then
-    next_version="${available_version}"
-    log "Versione precedente: ${current_version}; build saltato (-n), uso la versione disponibile ${next_version}"
-  else
-    next_version="${current_version}"
-    if [[ -z "${available_version}" ]]; then
-      warn "Nessuna immagine locale con tag semver trovata per le xApp selezionate; mantengo la versione ${current_version}"
+  if [[ -n "${available_version}" ]]; then
+    if version_gt "${available_version}" "${current_version}"; then
+      next_version="${available_version}"
+      log "Versione precedente: ${current_version}; build saltato (-n), uso la versione disponibile ${next_version}"
     else
+      next_version="${current_version}"
       log "Versione precedente: ${current_version}; build saltato (-n), nessuna versione piu' recente rilevata"
     fi
+  else
+    next_version="${current_version}"
+    warn "Nessuna immagine locale con tag semver trovata per le xApp selezionate; mantengo la versione ${current_version}"
   fi
 else
   log "Versione precedente: ${current_version}; nuova versione: ${next_version}"
