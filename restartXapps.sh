@@ -115,6 +115,46 @@ determine_current_version(){
   printf '%s\n' "${latest}"
 }
 
+determine_latest_available_image_version(){
+  local apps=("$@")
+  if [[ ${#apps[@]} -eq 0 ]]; then
+    apps=("${ALL_APPS[@]}")
+  fi
+
+  need docker
+  local total="${#apps[@]}"
+  local -A tag_counts=()
+  local app repo tag
+  for app in "${apps[@]}"; do
+    repo="${APP_IMAGES[$app]:-}"
+    if [[ -z "${repo}" ]]; then
+      warn "Repository immagine non configurato per ${app}; impossibile cercare la versione disponibile."
+      printf '\n'
+      return
+    fi
+    local -A seen_tag=()
+    while IFS= read -r tag; do
+      [[ -n "${tag}" && "${tag}" != "<none>" ]] || continue
+      [[ "${tag}" =~ ${SEMVER_REGEX} ]] || continue
+      if [[ -z "${seen_tag[$tag]:-}" ]]; then
+        seen_tag["${tag}"]=1
+        tag_counts["${tag}"]=$(( ${tag_counts["${tag}"]:-0} + 1 ))
+      fi
+    done < <(docker images "${repo}" --format '{{.Tag}}' 2>/dev/null || true)
+  done
+
+  local best=""
+  for tag in "${!tag_counts[@]}"; do
+    if (( tag_counts["${tag}"] == total )); then
+      if [[ -z "${best}" || version_gt "${tag}" "${best}" ]]; then
+        best="${tag}"
+      fi
+    fi
+  done
+
+  printf '%s\n' "${best}"
+}
+
 increment_patch_version(){
   local version="$1"
   if [[ ! "${version}" =~ ${SEMVER_REGEX} ]]; then
@@ -400,8 +440,18 @@ current_version="$(determine_current_version "${TARGET_APPS[@]}")"
 next_version="$(increment_patch_version "${current_version}")"
 
 if [[ "${SKIP_BUILD}" == "true" ]]; then
-  next_version="${current_version}"
-  log "Versione precedente: ${current_version}; build saltato (-n), uso ancora la stessa versione"
+  available_version="$(determine_latest_available_image_version "${TARGET_APPS[@]}")"
+  if [[ -n "${available_version}" && version_gt "${available_version}" "${current_version}" ]]; then
+    next_version="${available_version}"
+    log "Versione precedente: ${current_version}; build saltato (-n), uso la versione disponibile ${next_version}"
+  else
+    next_version="${current_version}"
+    if [[ -z "${available_version}" ]]; then
+      warn "Nessuna immagine locale con tag semver trovata per le xApp selezionate; mantengo la versione ${current_version}"
+    else
+      log "Versione precedente: ${current_version}; build saltato (-n), nessuna versione piu' recente rilevata"
+    fi
+  fi
 else
   log "Versione precedente: ${current_version}; nuova versione: ${next_version}"
   build_and_push_images "${next_version}" "${TARGET_APPS[@]}"
