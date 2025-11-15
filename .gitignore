@@ -11,7 +11,7 @@
 .local/share/
 .venvs/
 bin/
-lib/
+/lib/
 .bash_history
 .bash_logout
 .bashrc
