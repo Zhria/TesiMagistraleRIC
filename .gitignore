@@ -17,6 +17,11 @@ lib/
 .bashrc
 .lesshst
 .profile
+.codex
+.sudo_as_admin_successful
+pyenv.cfg
+.wget-hsts
+.git-credentials
 
 installer/kubectl
 linux-386/
