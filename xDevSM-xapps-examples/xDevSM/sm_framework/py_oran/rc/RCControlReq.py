@@ -217,6 +217,21 @@ class RCControlReqWrapper():
             print("Log info not implemented for this type of control action")
         
 
+    def dump_hdr_struct_bytes(self):
+        """
+        Dump the raw bytes of the RCControlHdr structure. This avoids any
+        encoding/decoding step so we can compare exactly what is present
+        in memory before the ASN.1 encoder runs.
+        """
+        if not self.control_req or not hasattr(self.control_req, "hdr"):
+            return b""
+        raw_hdr = ctypes.string_at(ctypes.addressof(self.control_req.hdr), ctypes.sizeof(self.control_req.hdr))
+        if self.logger:
+            self.logger.info("[RCControlReqWrapper] Raw RCControlHdr bytes (len=%d): %s", len(raw_hdr), raw_hdr)
+        else:
+            print("[RCControlReqWrapper] Raw RCControlHdr bytes (len={}): {}".format(len(raw_hdr), raw_hdr))
+        return raw_hdr
+
     def fill_DRB_param(self, index, drb_id=1):
         print("Filling index {} in drb".format(index))
         self.control_req.msg.union.frmt_1.ran_param[index].ran_param_id = qos_ran_parameter_ids["DRB ID"]
@@ -486,7 +501,15 @@ class RCControlReqWrapper():
             return
         self.control_req.hdr.union.frmt_1 = hdr.e2sm_rc_ctrl_hdr_frmt_1_t()
 
-        self.control_req.hdr.union.frmt_1.ric_style_type = ric_style_types[style_decoded]
+        style_type_value = getattr(style, "style_type", 0)
+        if style_type_value:
+            self.control_req.hdr.union.frmt_1.ric_style_type = style_type_value
+        else:
+            fallback = ric_style_types.get(style_decoded, 0)
+            if self.logger:
+                self.logger.warning("[RCControlReqWrapper] Missing style_type in RAN function, falling back to map value {} for style '{}'".format(
+                    fallback, style_decoded))
+            self.control_req.hdr.union.frmt_1.ric_style_type = fallback
 
         # TODO How do we get ue_id?
         if not ue_id is None:
@@ -551,7 +574,15 @@ class RCControlReqWrapper():
         self.control_req.hdr.union.frmt_1 = hdr.e2sm_rc_ctrl_hdr_frmt_1_t()
 
         # Radio resource allocation control
-        self.control_req.hdr.union.frmt_1.ric_style_type = ric_style_types[style_decoded]
+        style_type_value = getattr(style, "style_type", 0)
+        if style_type_value:
+            self.control_req.hdr.union.frmt_1.ric_style_type = style_type_value
+        else:
+            fallback = ric_style_types.get(style_decoded, 0)
+            if self.logger:
+                self.logger.warning("[RCControlReqWrapper] Missing style_type in RAN function, falling back to map value {} for style '{}'".format(
+                    fallback, style_decoded))
+            self.control_req.hdr.union.frmt_1.ric_style_type = fallback
 
         if ue_id is None:
             print("UE ID not provided")
@@ -603,7 +634,15 @@ class RCControlReqWrapper():
 
         self.control_req.hdr.format = e2sm_rc_ctrl_hdr_e.FORMAT_1_E2SM_RC_CTRL_HDR
         self.control_req.hdr.union.frmt_1 = hdr.e2sm_rc_ctrl_hdr_frmt_1_t()
-        self.control_req.hdr.union.frmt_1.ric_style_type = ric_style_types[style_decoded]
+        style_type_value = getattr(style, "style_type", 0)
+        if style_type_value:
+            self.control_req.hdr.union.frmt_1.ric_style_type = style_type_value
+        else:
+            fallback = ric_style_types.get(style_decoded, 0)
+            if self.logger:
+                self.logger.warning("[RCControlReqWrapper] Missing style_type in RAN function, falling back to map value {} for style '{}'".format(
+                    fallback, style_decoded))
+            self.control_req.hdr.union.frmt_1.ric_style_type = fallback
         if ue_id is None:
             print("UE ID not provided")
             return

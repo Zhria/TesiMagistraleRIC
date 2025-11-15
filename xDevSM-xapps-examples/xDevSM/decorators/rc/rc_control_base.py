@@ -136,6 +136,7 @@ class RCControlBase(BaseXDevSMWrapper):
         self.generate_control_request(ue_id=ue_id, control_action_id=control_action_id)
 
         self.wrapper.print_ctrl_req()
+        self.wrapper.dump_hdr_struct_bytes()
 
         rc_ctrl_req_enc = self.wrapper.encode()
 
