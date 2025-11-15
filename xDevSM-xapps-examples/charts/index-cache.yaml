@@ -1,0 +1,24 @@
+apiVersion: v1
+entries:
+  ho-control-xapp:
+  - apiVersion: v1
+    appVersion: "1.0"
+    created: "2025-11-06T12:01:59.305985775Z"
+    description: Standard xApp Helm Chart
+    digest: 1a38bb5d086b0006028bdcce5c01195f93f75b471ab191fcbda85690383106a2
+    name: ho-control-xapp
+    urls:
+    - charts/ho-control-xapp-1.0.0.tgz
+    version: 1.0.0
+generated: "2025-11-06T12:02:02Z"
+serverInfo: {}
+on: "1.0"
+    created: "2025-11-06T12:02:01.592003055Z"
+    description: Standard xApp Helm Chart
+    digest: 1c01eb1e24309140d9a2f77536285fbc893c5268493d5361cea8a970767b84a8
+    name: kpm-basic-xapp
+    urls:
+    - charts/kpm-basic-xapp-1.0.0.tgz
+    version: 1.0.0
+generated: "2025-11-06T12:02:02Z"
+serverInfo: {}

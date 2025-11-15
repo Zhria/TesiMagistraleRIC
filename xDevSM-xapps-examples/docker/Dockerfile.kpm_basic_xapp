@@ -1,0 +1,63 @@
+FROM python:3.8-slim AS rmr_builder
+
+RUN apt-get update && apt-get install -y wget gcc && rm -rf /var/lib/apt/lists/*
+
+ARG rmr_version=4.8.0
+ARG e2ap_version=2.0
+
+# pacchetti .deb RMR + e2ap
+RUN wget -nv --content-disposition https://packagecloud.io/o-ran-sc/release/packages/debian/stretch/rmr_${rmr_version}_amd64.deb/download.deb
+RUN wget -nv --content-disposition https://packagecloud.io/o-ran-sc/release/packages/debian/stretch/rmr-dev_${rmr_version}_amd64.deb/download.deb
+RUN wget -nv --content-disposition https://github.com/aferaudo/libe2ap_package/raw/refs/heads/main/riclibe2ap_${e2ap_version}_amd64.deb
+RUN wget -nv --content-disposition https://github.com/aferaudo/libe2ap_package/raw/refs/heads/main/riclibe2ap-dev_${e2ap_version}_amd64.deb
+
+RUN dpkg -i rmr_${rmr_version}_amd64.deb \
+ && dpkg -i rmr-dev_${rmr_version}_amd64.deb \
+ && dpkg -i riclibe2ap_${e2ap_version}_amd64.deb \
+ && dpkg -i riclibe2ap-dev_${e2ap_version}_amd64.deb
+
+# ---------- runtime ----------
+FROM python:3.8-slim
+
+ARG rmr_version=4.8.0
+ARG e2ap_version=2.0
+
+
+# copia librerie necessarie
+COPY --from=rmr_builder /usr/local/lib/librmr_si.so.${rmr_version} /usr/local/lib/librmr_si.so
+COPY --from=rmr_builder /usr/local/lib/libriclibe2ap.so /usr/local/lib/libriclibe2ap.so
+RUN chmod 755 /usr/local/lib/librmr_si.so /usr/local/lib/libriclibe2ap.so \
+ && ln -sf /usr/local/lib/librmr_si.so /usr/local/lib/librmr_si.so.${rmr_version}
+
+# dipendenze di sistema utili (opzionali)
+RUN apt-get update && apt-get install -y --no-install-recommends htop nano procps && rm -rf /var/lib/apt/lists/*
+
+# workspace
+WORKDIR /app
+COPY kpm_basic_xapp/requirements.txt ./requirements.txt
+
+# python deps
+RUN python -m pip install --upgrade pip setuptools wheel \
+ && pip install certifi six python_dateutil urllib3 logger requests inotify_simple mdclogpy google-api-python-client msgpack ricsdl \
+ && pip install --no-cache-dir -r requirements.txt
+
+COPY kpm_basic_xapp .
+COPY xDevSM ./xDevSM
+
+COPY xDevSM/sm_framework/lib/*.so /usr/local/lib/
+
+RUN sed -i 's/^\([[:space:]]*\)# \(_asn1_free_indicationMsg(indication)\)/\1\2/' /usr/local/lib/python3.8/site-packages/ricxappframe/e2ap/asn1.py || true
+
+ENV PYTHONPATH=/app
+#ENV CONFIG_FILE=/ws/config/config-file.json
+ENV CONFIG_FILE=/app/config/config-file.json
+ENV LD_LIBRARY_PATH=/lib:/usr/lib:/usr/local/lib:/app/xDevSM/sm_framework/lib
+#ENV RMR_SEED_RT=./config/uta_rtg.rt
+ENV RMR_SEED_RT=/app/config/uta_rtg.rt
+ENV RMR_LOG_VLEVEL='5'
+ENV RMR_HR_LOG='1'
+ENV PYTHONUNBUFFERED='1'
+
+EXPOSE 8080
+# Se kpm_xapp.py è in /ws (root del contesto), usa questo CMD:
+CMD ["python", "kpm_xapp.py"]

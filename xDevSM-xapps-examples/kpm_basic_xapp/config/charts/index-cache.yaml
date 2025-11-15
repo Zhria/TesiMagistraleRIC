@@ -1,0 +1,14 @@
+apiVersion: v1
+entries:
+  kpm-basic-xapp:
+  - apiVersion: v1
+    appVersion: "1.0"
+    created: "2025-10-05T13:20:42.310236763Z"
+    description: Standard xApp Helm Chart
+    digest: 808373a905096793070cd870309fc2952b709e88e2f7c0bff9843fb7241244a0
+    name: kpm-basic-xapp
+    urls:
+    - charts/kpm-basic-xapp-1.0.0.tgz
+    version: 1.0.0
+generated: "2025-10-05T13:20:42Z"
+serverInfo: {}
