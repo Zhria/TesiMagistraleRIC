@@ -11,6 +11,67 @@ Uso: ./pusha.sh [-b] [messaggio commit]
 EOF
 }
 
+SEMVER_REGEX='^[0-9]+\.[0-9]+\.[0-9]+$'
+
+increment_patch_version(){
+  local version="$1"
+  if [[ ! "${version}" =~ ${SEMVER_REGEX} ]]; then
+    version="0.0.0"
+  fi
+  IFS='.' read -r major minor patch <<< "${version}"
+  patch=$((patch + 1))
+  printf '%d.%d.%d\n' "${major}" "${minor}" "${patch}"
+}
+
+read_config_version(){
+  local config_file="$1"
+  python3 - "$config_file" <<'PY' 2>/dev/null || true
+import json
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+try:
+    data = json.loads(config_path.read_text())
+except Exception:
+    sys.exit(0)
+
+version = data.get("version") or ""
+for container in data.get("containers", []):
+    image = container.get("image")
+    if isinstance(image, dict):
+        tag = image.get("tag")
+        if tag:
+            version = tag
+            break
+
+if version:
+    print(version)
+PY
+}
+
+write_config_version(){
+  local config_file="$1"
+  local version="$2"
+  python3 - "$config_file" "$version" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+config_path = Path(sys.argv[1])
+version = sys.argv[2]
+
+data = json.loads(config_path.read_text())
+data["version"] = version
+for container in data.get("containers", []):
+    image = container.get("image")
+    if isinstance(image, dict):
+        image["tag"] = version
+
+config_path.write_text(json.dumps(data, indent=4) + "\n")
+PY
+}
+
 BUILD_IMAGE=false
 while getopts ":bh" opt; do
   case "${opt}" in
@@ -40,35 +101,14 @@ if [[ "${BUILD_IMAGE}" == "true" ]]; then
   [[ -f "${CONFIG_FILE}" ]] || die "File ${CONFIG_FILE} non trovato."
   [[ -f "${DOCKERFILE}" ]] || die "File ${DOCKERFILE} non trovato."
 
-  IMAGE_VERSION="$(python3 - "$CONFIG_FILE" <<'PY' 2>/dev/null || true
-import json
-import sys
-from pathlib import Path
-
-config_path = Path(sys.argv[1])
-try:
-    data = json.loads(config_path.read_text())
-except Exception:
-    sys.exit(0)
-
-version = data.get("version") or ""
-for container in data.get("containers", []):
-    image = container.get("image")
-    if isinstance(image, dict):
-        tag = image.get("tag")
-        if tag:
-            version = tag
-            break
-
-if version:
-    print(version)
-PY
-)"
-
-  if [[ -z "${IMAGE_VERSION}" ]]; then
-    IMAGE_VERSION="0.0.0"
-    log "Versione non trovata in config, uso ${IMAGE_VERSION}"
+  CURRENT_VERSION="$(read_config_version "${CONFIG_FILE}")"
+  if [[ -z "${CURRENT_VERSION}" ]]; then
+    CURRENT_VERSION="0.0.0"
+    log "Versione non trovata in config, inizializzo a ${CURRENT_VERSION}"
   fi
+  IMAGE_VERSION="$(increment_patch_version "${CURRENT_VERSION}")"
+  write_config_version "${CONFIG_FILE}" "${IMAGE_VERSION}"
+  log "Aggiornato config-file.json: ${CURRENT_VERSION} -> ${IMAGE_VERSION}"
 
   log "Build immagine ${IMAGE_REPO}:${IMAGE_VERSION}"
   docker build \
