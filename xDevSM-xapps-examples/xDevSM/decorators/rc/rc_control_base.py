@@ -109,6 +109,17 @@ class RCControlBase(BaseXDevSMWrapper):
             return
 
         ctrl_descr = ran_func_dsc.ctrl.contents 
+        ran_styles = []
+        for idx in range(ctrl_descr.sz_seq_ctrl_style):
+            style_obj = ctrl_descr.seq_ctrl_style[idx]
+            style_name = ""
+            if style_obj.name and style_obj.name.buf and style_obj.name.len:
+                style_name = bytes(
+                    np.ctypeslib.as_array(style_obj.name.buf, shape=(style_obj.name.len,))
+                ).decode("utf-8")
+            ran_styles.append({"type": style_obj.style_type, "name": style_name})
+        self.logger.info("[RCControlBase] RAN function styles: {}".format(ran_styles))
+        self.logger.info("[RCControlBase] Local RC style map: {}".format(ctrlReq.ric_style_types))
         self.style = next(
         (
             s for s in ctrl_descr.seq_ctrl_style[:ctrl_descr.sz_seq_ctrl_style]
