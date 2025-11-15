@@ -145,7 +145,7 @@ determine_latest_available_image_version(){
 
   local best=""
   for tag in "${!tag_counts[@]}"; do
-    if (( tag_counts["${tag}"] == total )); then
+    if [[ "${tag_counts[$tag]:-0}" -eq "${total}" ]]; then
       if [[ -z "${best}" || version_gt "${tag}" "${best}" ]]; then
         best="${tag}"
       fi
