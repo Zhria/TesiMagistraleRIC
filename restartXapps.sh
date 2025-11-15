@@ -38,6 +38,7 @@ usage(){
 Usage: restartXapps.sh [options]
   -kpm   Riavvia solo kpm-basic-xapp
   -ho    Riavvia solo ho-control-xapp
+  -n     Non esegue il build/push delle immagini (riusa la versione attuale)
   -h     Mostra questo messaggio
 Se non vengono passate opzioni, verranno gestite entrambe le xApp.
 USAGE
@@ -344,25 +345,29 @@ build_and_push_images(){
 }
 
 # ── flusso principale ───────────────────────────────────────────────────────────
-TARGET_APPS=("${ALL_APPS[@]}")
-if [[ $# -gt 0 ]]; then
-  TARGET_APPS=()
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      -kpm) TARGET_APPS+=("kpm-basic-xapp") ;;
-      -ho) TARGET_APPS+=("ho-control-xapp") ;;
-      -h|--help)
-        usage
-        exit 0
-        ;;
-      *)
-        warn "Opzione non riconosciuta: $1"
-        usage >&2
-        exit 1
-        ;;
-    esac
-    shift
-  done
+SKIP_BUILD=false
+TARGET_APPS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -kpm) TARGET_APPS+=("kpm-basic-xapp") ;;
+    -ho) TARGET_APPS+=("ho-control-xapp") ;;
+    -n) SKIP_BUILD=true ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      warn "Opzione non riconosciuta: $1"
+      usage >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+if [[ ${#TARGET_APPS[@]} -eq 0 ]]; then
+  TARGET_APPS=("${ALL_APPS[@]}")
+else
   # dedup
   declare -A _seen=()
   filtered_apps=()
@@ -393,11 +398,16 @@ ensure_chartmuseum
 
 current_version="$(determine_current_version "${TARGET_APPS[@]}")"
 next_version="$(increment_patch_version "${current_version}")"
-log "Versione precedente: ${current_version}; nuova versione: ${next_version}"
 
-build_and_push_images "${next_version}" "${TARGET_APPS[@]}"
-log "Rimuovo immagini locali obsolete"
-cleanup_old_local_images "${next_version}" "${TARGET_APPS[@]}"
+if [[ "${SKIP_BUILD}" == "true" ]]; then
+  next_version="${current_version}"
+  log "Versione precedente: ${current_version}; build saltato (-n), uso ancora la stessa versione"
+else
+  log "Versione precedente: ${current_version}; nuova versione: ${next_version}"
+  build_and_push_images "${next_version}" "${TARGET_APPS[@]}"
+  log "Rimuovo immagini locali obsolete"
+  cleanup_old_local_images "${next_version}" "${TARGET_APPS[@]}"
+fi
 
 activate_venv
 need dms_cli
