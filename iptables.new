@@ -1,0 +1,77 @@
+*raw
+:PREROUTING ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+-A PREROUTING -p sctp -m sctp --dport 32222 -j TRACE
+# Protect local forwarded ports used by Docker
+-A PREROUTING -d 127.0.0.1/32 ! -i lo -p tcp -m multiport --dports 32773:32777 -j DROP
+-A PREROUTING -d 172.17.0.2/32 ! -i docker0 -j DROP
+-A PREROUTING -d 172.17.0.3/32 ! -i docker0 -j DROP
+
+COMMIT
+
+
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:DOCKER - [0:0]
+:DOCKER-BRIDGE - [0:0]
+:DOCKER-CT - [0:0]
+:DOCKER-FORWARD - [0:0]
+:DOCKER-ISOLATION-STAGE-1 - [0:0]
+:DOCKER-ISOLATION-STAGE-2 - [0:0]
+:DOCKER-USER - [0:0]
+
+# Fast path for E2Term SCTP to avoid conntrack dependency
+-A FORWARD -p sctp -d 192.168.49.2 --dport 32222 -j ACCEPT
+-A FORWARD -p sctp -s 192.168.49.2 --sport 32222 -j ACCEPT
+
+# Generic bridging rules
+-A FORWARD -s 192.168.49.2/32 -p sctp --sport 32222 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A FORWARD -d 192.168.49.2/32 -p sctp --dport 32222 -m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT
+-A FORWARD -i br+ -o ens18 -j ACCEPT
+-A FORWARD -i ens18 -o br+ -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A FORWARD -i docker0 -o ens18 -j ACCEPT
+-A FORWARD -i ens18 -o docker0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+
+-A DOCKER-ISOLATION-STAGE-1 -i docker0 ! -o docker0 -j DOCKER-ISOLATION-STAGE-2
+-A DOCKER-ISOLATION-STAGE-1 -i br+ ! -o br+ -j DOCKER-ISOLATION-STAGE-2
+-A DOCKER-ISOLATION-STAGE-2 -o docker0 -j DROP
+-A DOCKER-ISOLATION-STAGE-2 -o br+ -j DROP
+
+-A DOCKER-FORWARD -j DOCKER-CT
+-A DOCKER-FORWARD -j DOCKER-ISOLATION-STAGE-1
+-A DOCKER-FORWARD -j DOCKER-BRIDGE
+-A DOCKER-FORWARD -i docker0 -j ACCEPT
+-A DOCKER-FORWARD -i br+ -j ACCEPT
+
+-A DOCKER-USER -s 192.168.49.2/32 -p sctp --sport 32222 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A DOCKER-USER -d 192.168.49.2/32 -p sctp --dport 32222 -j ACCEPT
+
+COMMIT
+
+
+*nat
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+:DOCKER - [0:0]
+
+# DNAT external requests towards the E2Term pod
+-A PREROUTING -i ens18 -d 192.168.17.125 -p sctp --dport 32222 -j DNAT --to-destination 192.168.49.2:32222
+-A PREROUTING -i ens18 -d 172.17.0.1  -p sctp --dport 32222 -j DNAT --to-destination 192.168.49.2:32222
+
+-A PREROUTING -m addrtype --dst-type LOCAL -j DOCKER
+-A OUTPUT ! -d 127.0.0.0/8 -m addrtype --dst-type LOCAL -j DOCKER
+
+# Masquerade traffic exiting the host
+-A POSTROUTING -s 192.168.49.0/24 -o ens18 -j MASQUERADE
+-A POSTROUTING -s 172.17.0.0/16 -o ens18 -j MASQUERADE
+
+-A DOCKER -i br+ -j RETURN
+-A DOCKER -i docker0 -j RETURN
+-A DOCKER ! -i docker0 -p tcp --dport 5000 -j DNAT --to-destination 172.17.0.2:5000
+-A DOCKER -d 127.0.0.1/32 ! -i br+ -p tcp -m multiport --dports 32773:32777 -j DNAT --to-destination 192.168.49.2
+
+COMMIT
