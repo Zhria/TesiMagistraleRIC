@@ -62,5 +62,4 @@ ENV LD_LIBRARY_PATH=/lib:/usr/lib:/usr/local/lib:/ws/xDevSM/sm_framework/lib
 ENV RMR_SEED_RT ./config/uta_rtg.rt
 
 
-# Manual start
 ENTRYPOINT ["python", "ho_xapp.py"]
