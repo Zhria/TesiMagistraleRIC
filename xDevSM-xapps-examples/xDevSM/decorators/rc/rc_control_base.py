@@ -140,14 +140,14 @@ class RCControlBase(BaseXDevSMWrapper):
 
         rc_ctrl_req_enc = self.wrapper.encode()
 
-        #hdr_byte_array = rc_ctrl_req_enc.hdr_encoded.to_bytes()
-        #ctrl_msg_byte_array = rc_ctrl_req_enc.msg_encoded.to_bytes()
+        hdr_byte_array = rc_ctrl_req_enc.hdr_encoded.to_bytes()
+        ctrl_msg_byte_array = rc_ctrl_req_enc.msg_encoded.to_bytes()
 
-        self.logger.info("[RCControlBase] hdr encoded: {}".format(rc_ctrl_req_enc.hdr_encoded))
-        self.logger.info("[RCControlBase] ctrl encoded: {}".format(rc_ctrl_req_enc.msg_encoded))
+        self.logger.info("[RCControlBase] hdr encoded: {}".format(hdr_byte_array))
+        self.logger.info("[RCControlBase] ctrl encoded: {}".format(ctrl_msg_byte_array))
         self.send_control_request_rmr(e2_node_id=e2_node_id,
-                                        control_header=rc_ctrl_req_enc.hdr_encoded,
-                                        control_message=rc_ctrl_req_enc.msg_encoded)
+                                        control_header=hdr_byte_array,
+                                        control_message=ctrl_msg_byte_array)
 
 
     def send_control_request_rmr(self, e2_node_id, control_header: bytes, control_message: bytes, call_process_id: bytes=b"", requestor_id=1, control_ack_request=1, request_sequence_number=0):

@@ -226,10 +226,7 @@ class RCControlReqWrapper():
         if not self.control_req or not hasattr(self.control_req, "hdr"):
             return b""
         raw_hdr = ctypes.string_at(ctypes.addressof(self.control_req.hdr), ctypes.sizeof(self.control_req.hdr))
-        if self.logger:
-            self.logger.info("[RCControlReqWrapper] Raw RCControlHdr bytes (len=%d): %s", len(raw_hdr), raw_hdr)
-        else:
-            print("[RCControlReqWrapper] Raw RCControlHdr bytes (len={}): {}".format(len(raw_hdr), raw_hdr))
+        print("[RCControlReqWrapper] Raw RCControlHdr bytes (len={}): {}".format(len(raw_hdr), raw_hdr))
         return raw_hdr
 
     def fill_DRB_param(self, index, drb_id=1):
