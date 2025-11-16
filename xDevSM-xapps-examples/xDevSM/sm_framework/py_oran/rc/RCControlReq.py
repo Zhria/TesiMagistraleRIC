@@ -201,9 +201,7 @@ class RCControlReqWrapper():
     def print_ctrl_req(self):
         # Header
         print("--- RC Control Request Header ---")
-        print("Format: {}".format(self.control_req.hdr.format.value))
-        print("Style: {}".format(self.control_req.hdr.union.frmt_1.ric_style_type))
-        print("Control Action ID: {}".format(self.control_req.hdr.union.frmt_1.ctrl_act_id))
+        self.log_header_details()
 
         # TODO: Needs refactoring based on the type of control action
         # Message 
@@ -228,6 +226,240 @@ class RCControlReqWrapper():
         raw_hdr = ctypes.string_at(ctypes.addressof(self.control_req.hdr), ctypes.sizeof(self.control_req.hdr))
         print("[RCControlReqWrapper] Raw RCControlHdr bytes (len={}): {}".format(len(raw_hdr), raw_hdr))
         return raw_hdr
+
+    def log_header_details(self):
+        """
+        Print a human readable view of every field that ends up in the RC control header.
+        """
+        if not self.control_req or not hasattr(self.control_req, "hdr"):
+            print("[RCControlReqWrapper] No RCControlHdr to inspect")
+            return
+
+        hdr = self.control_req.hdr
+        fmt_val = int(getattr(hdr.format, "value", hdr.format))
+        fmt_name = self._enum_name(e2sm_rc_ctrl_hdr_e, fmt_val)
+        print("Format: {} ({})".format(fmt_val, fmt_name))
+
+        if fmt_val == e2sm_rc_ctrl_hdr_e.FORMAT_1_E2SM_RC_CTRL_HDR:
+            style = int(hdr.union.frmt_1.ric_style_type)
+            style_name = self._style_name(style)
+            print("RIC Style Type: {} ({})".format(style, style_name))
+            ctrl_act = int(hdr.union.frmt_1.ctrl_act_id)
+            print("Control Action ID: {}".format(ctrl_act))
+            if hdr.union.frmt_1.ric_ctrl_decision:
+                dec_val = int(hdr.union.frmt_1.ric_ctrl_decision.contents.value)
+                dec_name = self._enum_name(ric_ctrl_decision_e, dec_val)
+                print("RIC Control Decision: {} ({})".format(dec_val, dec_name))
+            else:
+                print("RIC Control Decision: None")
+            self._log_ue_id_details(hdr.union.frmt_1.ue_id)
+        elif fmt_val == e2sm_rc_ctrl_hdr_e.FORMAT_2_E2SM_RC_CTRL_HDR:
+            ue_ptr = hdr.union.frmt_2.ue_id
+            if ue_ptr:
+                self._log_ue_id_details(ue_ptr.contents)
+            else:
+                print("UE ID: None")
+            if hdr.union.frmt_2.ric_ctrl_dec:
+                dec_val = int(hdr.union.frmt_2.ric_ctrl_dec.contents.value)
+                dec_name = self._enum_name(ric_ctrl_dec_ctrl_hdr_frmt_2_e, dec_val)
+                print("RIC Control Decision (fmt2): {} ({})".format(dec_val, dec_name))
+            else:
+                print("RIC Control Decision (fmt2): None")
+        else:
+            print("[RCControlReqWrapper] Unsupported RC control header format {}".format(fmt_val))
+
+    def _enum_name(self, enum_cls, value):
+        """
+        Utility helper that maps the numeric value of a ctypes enum to its python name.
+        """
+        for attr in dir(enum_cls):
+            if attr.startswith("_"):
+                continue
+            attr_val = getattr(enum_cls, attr)
+            if attr_val == value:
+                return attr
+        return "UNKNOWN"
+
+    def _style_name(self, style_id):
+        for name, value in ric_style_types.items():
+            if value == style_id:
+                return name
+        return "unknown-style"
+
+    def _log_ue_id_details(self, ue_id: hdr.ue_id_e2sm_t):
+        ue_type_val = int(getattr(ue_id.type, "value", ue_id.type))
+        ue_type_name = self._enum_name(ue_id_e2sm_e, ue_type_val)
+        print("UE ID Type: {} ({})".format(ue_type_val, ue_type_name))
+
+        if ue_type_val == ue_id_e2sm_e.GNB_UE_ID_E2SM:
+            self._log_gnb_fields(ue_id.union.gnb)
+        elif ue_type_val == ue_id_e2sm_e.GNB_DU_UE_ID_E2SM:
+            self._log_gnb_du_fields(ue_id.union.gnb_du)
+        elif ue_type_val == ue_id_e2sm_e.GNB_CU_UP_UE_ID_E2SM:
+            self._log_gnb_cu_up_fields(ue_id.union.gnb_cu_up)
+        elif ue_type_val == ue_id_e2sm_e.NG_ENB_UE_ID_E2SM:
+            self._log_ng_enb_fields(ue_id.union.ng_enb)
+        elif ue_type_val == ue_id_e2sm_e.NG_ENB_DU_UE_ID_E2SM:
+            self._log_ng_enb_du_fields(ue_id.union.ng_enb_du)
+        elif ue_type_val == ue_id_e2sm_e.EN_GNB_UE_ID_E2SM:
+            self._log_en_gnb_fields(ue_id.union.en_gnb)
+        elif ue_type_val == ue_id_e2sm_e.ENB_UE_ID_E2SM:
+            self._log_enb_fields(ue_id.union.enb)
+        else:
+            print("  [UE] No logger implemented for type {}".format(ue_type_name))
+
+    def _log_gnb_fields(self, gnb):
+        print("  [gNB UE] amf_ue_ngap_id={}".format(gnb.amf_ue_ngap_id))
+        print("  [gNB UE] GUAMI={}".format(self._format_guami(gnb.guami)))
+        print("  [gNB UE] gnb_cu_ue_f1ap_ids={}".format(self._dump_uint32_array(gnb.gnb_cu_ue_f1ap_lst, gnb.gnb_cu_ue_f1ap_lst_len)))
+        print("  [gNB UE] gnb_cu_cp_ue_e1ap_ids={}".format(self._dump_uint32_array(gnb.gnb_cu_cp_ue_e1ap_lst, gnb.gnb_cu_cp_ue_e1ap_lst_len)))
+        print("  [gNB UE] ran_ue_id={}".format(self._safe_ptr_value(gnb.ran_ue_id)))
+        print("  [gNB UE] ng_ran_node_ue_xnap_id={}".format(self._safe_ptr_value(gnb.ng_ran_node_ue_xnap_id)))
+        if gnb.global_gnb_id:
+            print("  [gNB UE] global_gnb_id={}".format(self._format_global_gnb_id(gnb.global_gnb_id.contents)))
+        else:
+            print("  [gNB UE] global_gnb_id=None")
+        if gnb.global_ng_ran_node_id:
+            print("  [gNB UE] global_ng_ran_node_id={}".format(self._format_global_ng_ran_node_id(gnb.global_ng_ran_node_id.contents)))
+        else:
+            print("  [gNB UE] global_ng_ran_node_id=None")
+
+    def _log_gnb_du_fields(self, gnb_du):
+        print("  [gNB-DU UE] gnb_cu_ue_f1ap={}".format(gnb_du.gnb_cu_ue_f1ap))
+        print("  [gNB-DU UE] ran_ue_id={}".format(self._safe_ptr_value(gnb_du.ran_ue_id)))
+
+    def _log_gnb_cu_up_fields(self, gnb_cu_up):
+        print("  [gNB-CU-UP UE] gnb_cu_cp_ue_e1ap={}".format(gnb_cu_up.gnb_cu_cp_ue_e1ap))
+        print("  [gNB-CU-UP UE] ran_ue_id={}".format(self._safe_ptr_value(gnb_cu_up.ran_ue_id)))
+
+    def _log_ng_enb_fields(self, ng_enb):
+        print("  [NG-eNB UE] amf_ue_ngap_id={}".format(ng_enb.amf_ue_ngap_id))
+        print("  [NG-eNB UE] GUAMI={}".format(self._format_guami(ng_enb.guami)))
+        print("  [NG-eNB UE] ng_enb_cu_ue_w1ap_id={}".format(self._safe_ptr_value(ng_enb.ng_enb_cu_ue_w1ap_id)))
+        print("  [NG-eNB UE] ng_ran_node_ue_xnap_id={}".format(self._safe_ptr_value(ng_enb.ng_ran_node_ue_xnap_id)))
+        if ng_enb.global_ng_enb_id:
+            print("  [NG-eNB UE] global_ng_enb_id={}".format(self._format_global_ng_enb_id(ng_enb.global_ng_enb_id.contents)))
+        else:
+            print("  [NG-eNB UE] global_ng_enb_id=None")
+        if ng_enb.global_ng_ran_node_id:
+            print("  [NG-eNB UE] global_ng_ran_node_id={}".format(self._format_global_ng_ran_node_id(ng_enb.global_ng_ran_node_id.contents)))
+        else:
+            print("  [NG-eNB UE] global_ng_ran_node_id=None")
+
+    def _log_ng_enb_du_fields(self, ng_enb_du):
+        print("  [NG-eNB-DU UE] ng_enb_cu_ue_w1ap_id={}".format(ng_enb_du.ng_enb_cu_ue_w1ap_id))
+
+    def _log_en_gnb_fields(self, en_gnb):
+        print("  [EN-gNB UE] enb_ue_x2ap_id={}".format(en_gnb.enb_ue_x2ap_id))
+        print("  [EN-gNB UE] enb_ue_x2ap_id_extension={}".format(self._safe_ptr_value(en_gnb.enb_ue_x2ap_id_extension)))
+        print("  [EN-gNB UE] global_enb_id={}".format(self._format_global_enb_id(en_gnb.global_enb_id)))
+        if en_gnb.gnb_cu_ue_f1ap_lst:
+            print("  [EN-gNB UE] gnb_cu_ue_f1ap list present (length not advertised)")
+        else:
+            print("  [EN-gNB UE] gnb_cu_ue_f1ap list absent")
+        print("  [EN-gNB UE] gnb_cu_cp_ue_e1ap_ids={}".format(self._dump_uint32_array(en_gnb.gnb_cu_cp_ue_e1ap_lst, en_gnb.gnb_cu_cp_ue_e1ap_lst_len)))
+        print("  [EN-gNB UE] ran_ue_id={}".format(self._safe_ptr_value(en_gnb.ran_ue_id)))
+
+    def _log_enb_fields(self, enb):
+        print("  [eNB UE] mme_ue_s1ap_id={}".format(enb.mme_ue_s1ap_id))
+        print("  [eNB UE] gummei={}".format(self._format_gummei(enb.gummei)))
+        print("  [eNB UE] enb_ue_x2ap_id={}".format(self._safe_ptr_value(enb.enb_ue_x2ap_id)))
+        print("  [eNB UE] enb_ue_x2ap_id_extension={}".format(self._safe_ptr_value(enb.enb_ue_x2ap_id_extension)))
+        print("  [eNB UE] global_enb_id={}".format(self._format_global_enb_id(enb.global_enb_id)))
+
+    def _format_plmn(self, plmn):
+        if not plmn:
+            return "None"
+        return "mcc={} mnc={} (digits={})".format(plmn.mcc, plmn.mnc, plmn.mnc_digit_len)
+
+    def _format_guami(self, guami):
+        if not guami:
+            return "None"
+        return "plmn=({}) amf_region={} amf_set={} amf_pointer={}".format(
+            self._format_plmn(guami.plmn_id),
+            guami.amf_region_id,
+            guami.amf_set_id,
+            guami.amf_ptr
+        )
+
+    def _format_gummei(self, gummei):
+        if not gummei:
+            return "None"
+        return "plmn=({}) mme_group_id={} mme_code={}".format(
+            self._format_plmn(gummei.plmn_id),
+            gummei.mme_group_id,
+            gummei.mme_code
+        )
+
+    def _format_global_gnb_id(self, global_id):
+        return "plmn=({}) type={} ({}) nb_id={}".format(
+            self._format_plmn(global_id.plmn_id),
+            int(getattr(global_id.type, "value", global_id.type)),
+            self._enum_name(gnb_type_id_e, int(getattr(global_id.type, "value", global_id.type))),
+            global_id.union.gnb_id.nb_id
+        )
+
+    def _format_global_ng_enb_id(self, global_id):
+        type_val = int(getattr(global_id.type, "value", global_id.type))
+        type_name = self._enum_name(ng_enb_type_id_e, type_val)
+        if type_val == ng_enb_type_id_e.MACRO_NG_ENB_TYPE_ID:
+            identifier = global_id.union.macro_ng_enb_id
+        elif type_val == ng_enb_type_id_e.SHORT_MACRO_NG_ENB_TYPE_ID:
+            identifier = global_id.union.short_macro_ng_enb_id
+        elif type_val == ng_enb_type_id_e.LONG_MACRO_NG_ENB_TYPE_ID:
+            identifier = global_id.union.long_macro_ng_enb_id
+        else:
+            identifier = None
+        return "plmn=({}) type={} ({}) identifier={}".format(
+            self._format_plmn(global_id.plmn_id),
+            type_val,
+            type_name,
+            identifier
+        )
+
+    def _format_global_enb_id(self, global_id_ptr):
+        if not global_id_ptr:
+            return "None"
+        global_id = global_id_ptr.contents if hasattr(global_id_ptr, "contents") else global_id_ptr
+        type_val = int(getattr(global_id.type, "value", global_id.type))
+        type_name = self._enum_name(enb_type_id_e, type_val)
+        if type_val == enb_type_id_e.MACRO_ENB_TYPE_ID:
+            identifier = global_id.union.macro_enb_id
+        elif type_val == enb_type_id_e.HOME_ENB_TYPE_ID:
+            identifier = global_id.union.home_enb_id
+        elif type_val == enb_type_id_e.SHORT_MACRO_ENB_TYPE_ID:
+            identifier = global_id.union.short_macro_enb_id
+        elif type_val == enb_type_id_e.LONG_MACRO_ENB_TYPE_ID:
+            identifier = global_id.union.long_macro_enb_id
+        else:
+            identifier = None
+        return "plmn=({}) type={} ({}) identifier={}".format(
+            self._format_plmn(global_id.plmn_id),
+            type_val,
+            type_name,
+            identifier
+        )
+
+    def _format_global_ng_ran_node_id(self, node):
+        type_val = int(getattr(node.type, "value", node.type))
+        type_name = self._enum_name(ng_ran_node_type_id_e, type_val)
+        if type_val == ng_ran_node_type_id_e.GNB_GLOBAL_TYPE_ID:
+            embedded = self._format_global_gnb_id(node.union.global_gnb_id)
+        elif type_val == ng_ran_node_type_id_e.NG_ENB_GLOBAL_TYPE_ID:
+            embedded = self._format_global_ng_enb_id(node.union.global_ng_enb_id)
+        else:
+            embedded = "None"
+        return "type={} ({}) node={}".format(type_val, type_name, embedded)
+
+    def _safe_ptr_value(self, ptr):
+        if ptr:
+            return ptr.contents.value
+        return None
+
+    def _dump_uint32_array(self, ptr, length):
+        if ptr and length:
+            return [ptr[i] for i in range(length)]
+        return []
 
     def fill_DRB_param(self, index, drb_id=1):
         print("Filling index {} in drb".format(index))
