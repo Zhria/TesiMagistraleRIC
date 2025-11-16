@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── costanti principali ─────────────────────────────────────────────────────────
+# ── configurazione principale ─────────────────────────────────────────────────
 NAMESPACE="ricxapp"
+APP_NAME="ho-control-xapp"
+IMAGE_REPO="docker.io/zhria/handover_app"
+
 CHARTMUSEUM_PORT="8090"
 CHARTMUSEUM_URL="http://127.0.0.1:${CHARTMUSEUM_PORT}"
 CHARTMUSEUM_CONTAINER="chartmuseum"
@@ -11,37 +14,20 @@ CHARTMUSEUM_STORAGE="${HOME}/charts"
 
 DMS_VENV="${HOME}/.venvs/dms"
 BASE_ROOT="${HOME}/xDevSM-xapps-examples"
+CONFIG_DIR="${BASE_ROOT}/ho_xapp/config"
+CONFIG_FILE="${CONFIG_DIR}/config-file.json"
+SCHEMA_FILE="${CONFIG_DIR}/schema.json"
 WORK_ROOT="$(pwd)"
 
-declare -A APP_CONFIGS=(
- # ["kpm-basic-xapp"]="${BASE_ROOT}/kpm_basic_xapp/config"
-  ["ho-control-xapp"]="${BASE_ROOT}/ho_xapp/config"
-)
-declare -A APP_IMAGES=(
-#  ["kpm-basic-xapp"]="zhria/kpm_app"
-  ["ho-control-xapp"]="zhria/handover_app"
-)
-declare -A APP_DOCKERFILES=(
-#  ["kpm-basic-xapp"]="${BASE_ROOT}/docker/Dockerfile.kpm_basic_xapp"
-  ["ho-control-xapp"]="${BASE_ROOT}/docker/Dockerfile.rc_ho_control.dev"
-)
-#ALL_APPS=("kpm-basic-xapp" "ho-control-xapp")
-ALL_APPS=("ho-control-xapp")
-
-SEMVER_REGEX='^[0-9]+\.[0-9]+\.[0-9]+$'
-
-# ── utils ───────────────────────────────────────────────────────────────────────
+# ── utilità ───────────────────────────────────────────────────────────────────
 log(){ printf '\n[%s] %s\n' "$(date +'%H:%M:%S')" "$*"; }
 warn(){ printf '\n[%s] WARNING: %s\n' "$(date +'%H:%M:%S')" "$*" >&2; }
 usage(){
-  cat <<'USAGE'
-Usage: restartXapps.sh [options]
-  -kpm   Riavvia solo kpm-basic-xapp
-  -ho    Riavvia solo ho-control-xapp
-  -n     Non esegue il build/push delle immagini (riusa la versione attuale)
-  -v X   Forza la versione X (es. 0.0.70)
-  -h     Mostra questo messaggio
-Se non vengono passate opzioni, verranno gestite entrambe le xApp.
+  cat <<USAGE
+Usage: restartXapps.sh
+  Questo script reinstalla ho-control-xapp usando sempre l'immagine
+  ${IMAGE_REPO} con il tag indicato nel config-file.json di ho_xapp.
+  Non sono supportate altre opzioni.
 USAGE
 }
 
@@ -63,155 +49,6 @@ ensure_chartmuseum_storage(){
   fi
 }
 
-version_gt(){
-  local left="$1"
-  local right="$2"
-  [[ "${left}" == "${right}" ]] && return 1
-  local highest
-  highest="$(printf '%s\n%s\n' "${left}" "${right}" | sort -V | tail -n 1)"
-  [[ "${highest}" == "${left}" ]]
-}
-
-extract_tag_from_config(){
-  local config_file="$1"
-  python3 - "$config_file" <<'PY' 2>/dev/null || true
-import json
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-if not path.exists():
-    sys.exit(0)
-
-try:
-    data = json.loads(path.read_text())
-except Exception:
-    sys.exit(0)
-
-for container in data.get("containers", []):
-    image = container.get("image") or {}
-    tag = image.get("tag")
-    if tag:
-        print(tag)
-        break
-PY
-}
-
-determine_current_version(){
-  local apps=("$@")
-  if [[ ${#apps[@]} -eq 0 ]]; then
-    apps=("${ALL_APPS[@]}")
-  fi
-  local latest="0.0.0"
-  local app config_dir config_file tag
-  for app in "${apps[@]}"; do
-    config_dir="${APP_CONFIGS[$app]}"
-    config_file="${config_dir}/config-file.json"
-    [[ -f "${config_file}" ]] || continue
-    tag="$(extract_tag_from_config "${config_file}" | head -n1 || true)"
-    if [[ "${tag}" =~ ${SEMVER_REGEX} ]] && version_gt "${tag}" "${latest}"; then
-      latest="${tag}"
-    fi
-  done
-  printf '%s\n' "${latest}"
-}
-
-determine_latest_available_image_version(){
-  local apps=("$@")
-  if [[ ${#apps[@]} -eq 0 ]]; then
-    apps=("${ALL_APPS[@]}")
-  fi
-
-  need docker
-  local total="${#apps[@]}"
-  local -A tag_counts=()
-  local app repo tag
-  for app in "${apps[@]}"; do
-    repo="${APP_IMAGES[$app]:-}"
-    if [[ -z "${repo}" ]]; then
-      warn "Repository immagine non configurato per ${app}; impossibile cercare la versione disponibile."
-      printf '\n'
-      return
-    fi
-    local -A seen_tag=()
-    while IFS= read -r tag; do
-      [[ -n "${tag}" && "${tag}" != "<none>" ]] || continue
-      [[ "${tag}" =~ ${SEMVER_REGEX} ]] || continue
-      if [[ -z "${seen_tag[$tag]:-}" ]]; then
-        seen_tag["${tag}"]=1
-        tag_counts["${tag}"]=$(( ${tag_counts["${tag}"]:-0} + 1 ))
-      fi
-    done < <(docker images "${repo}" --format '{{.Tag}}' 2>/dev/null || true)
-  done
-
-  local best=""
-  for tag in "${!tag_counts[@]}"; do
-    if [[ "${tag_counts[$tag]:-0}" -eq "${total}" ]]; then
-      if [[ -z "${best}" ]] || version_gt "${tag}" "${best}"; then
-        best="${tag}"
-      fi
-    fi
-  done
-
-  printf '%s\n' "${best}"
-}
-
-increment_patch_version(){
-  local version="$1"
-  if [[ ! "${version}" =~ ${SEMVER_REGEX} ]]; then
-    version="0.0.0"
-  fi
-  IFS='.' read -r major minor patch <<< "${version}"
-  patch=$((patch + 1))
-  printf '%d.%d.%d\n' "${major}" "${minor}" "${patch}"
-}
-
-update_app_config(){
-  local config_file="$1"
-  local version="$2"
-  python3 - "$config_file" "$version" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-config_path = Path(sys.argv[1])
-version = sys.argv[2]
-
-data = json.loads(config_path.read_text())
-data["version"] = version
-for container in data.get("containers", []):
-    image = container.get("image")
-    if isinstance(image, dict):
-        image["tag"] = version
-
-config_path.write_text(json.dumps(data, indent=4) + "\n")
-PY
-}
-
-cleanup_old_local_images(){
-  local keep_version="$1"
-  shift || true
-  local apps=("$@")
-  if [[ ${#apps[@]} -eq 0 ]]; then
-    apps=("${ALL_APPS[@]}")
-  fi
-  need docker
-  local app repo
-  for app in "${apps[@]}"; do
-    repo="${APP_IMAGES[$app]}"
-    while IFS=' ' read -r image_id tag; do
-      [[ -n "${image_id}" && -n "${tag}" ]] || continue
-      if [[ "${tag}" == "<none>" ]]; then
-        docker rmi "${image_id}" >/dev/null 2>&1 || warn "Impossibile rimuovere immagine dangling ${image_id}"
-        continue
-      fi
-      if [[ "${tag}" =~ ${SEMVER_REGEX} && "${tag}" != "${keep_version}" ]]; then
-        docker rmi "${repo}:${tag}" >/dev/null 2>&1 || warn "Impossibile rimuovere ${repo}:${tag}"
-      fi
-    done < <(docker images "${repo}" --format '{{.ID}} {{.Tag}}' || true)
-  done
-}
-
 ensure_chartmuseum(){
   ensure_chartmuseum_storage
   need docker
@@ -231,8 +68,6 @@ ensure_chartmuseum(){
       return
     fi
   fi
-
-  need docker
 
   if docker ps --format '{{.Names}}' | grep -Fxq "${CHARTMUSEUM_CONTAINER}"; then
     warn "Container ${CHARTMUSEUM_CONTAINER} in esecuzione ma non risponde; provo a riavviarlo"
@@ -261,7 +96,6 @@ ensure_chartmuseum(){
     -v "${CHARTMUSEUM_STORAGE}:/charts" \
     "${CHARTMUSEUM_IMAGE}" >/dev/null
 
-  # attende che risponda
   for _ in {1..10}; do
     sleep 1
     if curl -fsS "${CHARTMUSEUM_URL}/health" >/dev/null 2>&1; then
@@ -355,130 +189,95 @@ delete_chart_from_repo(){
       warn "Impossibile contattare ChartMuseum per cancellare ${app}-${version}"
       ;;
     *)
-      warn "Errore nel cancellare ${app}-${version} (HTTP ${status}): $(<\"${tmp}\")"
+      warn "Errore nel cancellare ${app}-${version} (HTTP ${status}): $(<"${tmp}")"
       ;;
   esac
 
   rm -f "${tmp}"
 }
 
-build_and_push_images(){
-  local version="$1"
-  shift || true
-  local apps=("$@")
-  if [[ ${#apps[@]} -eq 0 ]]; then
-    apps=("${ALL_APPS[@]}")
-  fi
-  need docker
+read_version_from_config(){
+  python3 - "${CONFIG_FILE}" <<'PY'
+import json
+import sys
+from pathlib import Path
 
-  local app image dockerfile
-  for app in "${apps[@]}"; do
-    image="${APP_IMAGES[$app]}"
-    dockerfile="${APP_DOCKERFILES[$app]}"
-    log "Build & push immagine ${app} (tag ${version})"
-    docker build --no-cache \
-      -f "${dockerfile}" \
-      -t "${image}:${version}" \
-      -t "${image}:latest" \
-      "${BASE_ROOT}"
-    docker push "${image}:${version}"
-    done
+config = Path(sys.argv[1])
+if not config.exists():
+    sys.exit(1)
+
+data = json.loads(config.read_text())
+
+containers = data.get("containers", [])
+for container in containers:
+    image = container.get("image") or {}
+    tag = image.get("tag")
+    if tag:
+        print(tag)
+        sys.exit(0)
+
+tag = data.get("version")
+if tag:
+    print(tag)
+PY
 }
 
-# ── flusso principale ───────────────────────────────────────────────────────────
-SKIP_BUILD=false
-FORCED_VERSION=""
-TARGET_APPS=()
-while [[ $# -gt 0 ]]; do
+pull_app_image(){
+  local version="$1"
+  need docker
+  log "Recupero immagine ${IMAGE_REPO}:${version} da Docker Hub"
+  docker pull "${IMAGE_REPO}:${version}"
+}
+
+# ── esecuzione principale ─────────────────────────────────────────────────────
+if [[ $# -gt 0 ]]; then
   case "$1" in
-    -kpm) TARGET_APPS+=("kpm-basic-xapp") ;;
-    -ho) TARGET_APPS+=("ho-control-xapp") ;;
-    -n) SKIP_BUILD=true ;;
-    -v)
-      shift
-      FORCED_VERSION="${1:-}"
-      if [[ -z "${FORCED_VERSION}" ]]; then
-        warn "Opzione -v richiede una versione (es. 0.0.70)"
-        usage
-        exit 1
-      fi
-      ;;
     -h|--help)
       usage
       exit 0
       ;;
     *)
-      warn "Opzione non riconosciuta: $1"
+      warn "Opzione non supportata: $1"
       usage >&2
       exit 1
       ;;
   esac
-  shift
-done
-
-if [[ ${#TARGET_APPS[@]} -eq 0 ]]; then
-  TARGET_APPS=("${ALL_APPS[@]}")
-else
-  # dedup
-  declare -A _seen=()
-  filtered_apps=()
-  for app in "${TARGET_APPS[@]}"; do
-    if [[ -z "${_seen[$app]:-}" ]]; then
-      _seen[$app]=1
-      filtered_apps+=("${app}")
-    fi
-  done
-  TARGET_APPS=("${filtered_apps[@]}")
-fi
-
-if [[ ${#TARGET_APPS[@]} -eq 0 ]]; then
-  warn "Nessuna xApp selezionata."
-  exit 1
 fi
 
 need helm
 need curl
 need python3
+need docker
 
-log "Disinstallo le xApps selezionate (ignoro errori)"
-for app in "${TARGET_APPS[@]}"; do
-  helm -n "${NAMESPACE}" uninstall "${app}" >/dev/null 2>&1 || true
-done
+if [[ ! -f "${CONFIG_FILE}" ]]; then
+  warn "Config mancante: ${CONFIG_FILE}"
+  exit 1
+fi
+
+if [[ ! -f "${SCHEMA_FILE}" ]]; then
+  warn "Schema mancante: ${SCHEMA_FILE}"
+  exit 1
+fi
+
+version="$(read_version_from_config || true)"
+if [[ -z "${version}" ]]; then
+  warn "Impossibile determinare il tag dal config ${CONFIG_FILE}"
+  exit 1
+fi
+
+pull_app_image "${version}"
+
+log "Disinstallo ${APP_NAME} tramite helm (ignoro errori)"
+helm -n "${NAMESPACE}" uninstall "${APP_NAME}" >/dev/null 2>&1 || true
 
 ensure_chartmuseum
 
-current_version="$(determine_current_version "${TARGET_APPS[@]}")"
-next_version="${current_version}"
-
-if [[ -n "${FORCED_VERSION}" ]]; then
-  if [[ ! "${FORCED_VERSION}" =~ ${SEMVER_REGEX} ]]; then
-    warn "Versione non valida specificata con -v: ${FORCED_VERSION}"
-    exit 1
-  fi
-  next_version="${FORCED_VERSION}"
-  if [[ "${SKIP_BUILD}" == "true" ]]; then
-    log "Build saltato (-n), uso versione specificata ${next_version}"
-  else
-    log "Uso versione specificata ${next_version} per build/push"
-  fi
-elif [[ "${SKIP_BUILD}" == "true" ]]; then
-  available_version="$(determine_latest_available_image_version "${TARGET_APPS[@]}")"
-  if [[ -n "${available_version}" ]] && version_gt "${available_version}" "${current_version}"; then
-    next_version="${available_version}"
-    log "Versione precedente: ${current_version}; build saltato (-n), uso la versione disponibile ${next_version}"
-  else
-    log "Versione precedente: ${current_version}; build saltato (-n), nessuna versione piu' recente rilevata (uso ${next_version})"
-  fi
-else
-  next_version="$(increment_patch_version "${current_version}")"
-  log "Versione precedente: ${current_version}; nuova versione: ${next_version}"
+if ! prepare_helm_template_dir "${APP_NAME}"; then
+  warn "Impossibile preparare /tmp/helm_template"
+  exit 1
 fi
 
-if [[ "${SKIP_BUILD}" != "true" ]]; then
-  build_and_push_images "${next_version}" "${TARGET_APPS[@]}"
-  log "Rimuovo immagini locali obsolete"
-  cleanup_old_local_images "${next_version}" "${TARGET_APPS[@]}"
-fi
+ensure_local_chart_package "${APP_NAME}" "${version}"
 
 activate_venv
 need dms_cli
@@ -486,34 +285,15 @@ need dms_cli
 export CHART_REPO_URL="${CHARTMUSEUM_URL}"
 log "CHART_REPO_URL=${CHART_REPO_URL}"
 
-for app in "${TARGET_APPS[@]}"; do
-  config_dir="${APP_CONFIGS[$app]}"
-  version="${next_version}"
-  config_file="${config_dir}/config-file.json"
-  schema_file="${config_dir}/schema.json"
-  if [[ ! -f "${config_file}" || ! -f "${schema_file}" ]]; then
-    warn "Config o schema mancanti per ${app} in ${config_dir}, salto."
-    continue
-  fi
+log "Uninstall ${APP_NAME} tramite dms_cli (ignoro errori)"
+dms_cli uninstall "${APP_NAME}" "${NAMESPACE}" >/dev/null 2>&1 || true
 
-  update_app_config "${config_file}" "${version}"
-  if ! prepare_helm_template_dir "${app}"; then
-    warn "Salto install per ${app} finché /tmp/helm_template non è sistemata."
-    continue
-  fi
+delete_chart_from_repo "${APP_NAME}" "${version}"
 
-  ensure_local_chart_package "${app}" "${version}"
+log "Onboard ${APP_NAME} (versione ${version})"
+dms_cli onboard "${CONFIG_FILE}" "${SCHEMA_FILE}"
 
-  log "Uninstall ${app} tramite dms_cli (ignoro errori)"
-  dms_cli uninstall "${app}" "${NAMESPACE}" >/dev/null 2>&1 || true
-
-  delete_chart_from_repo "${app}" "${version}"
-
-  log "Onboard ${app} (versione ${version})"
-  dms_cli onboard "${config_file}" "${schema_file}"
-
-  log "Install ${app} su namespace ${NAMESPACE}"
-  dms_cli install "${app}" "${version}" "${NAMESPACE}"
-done
+log "Install ${APP_NAME} su namespace ${NAMESPACE}"
+dms_cli install "${APP_NAME}" "${version}" "${NAMESPACE}"
 
 log "Operazione completata."
