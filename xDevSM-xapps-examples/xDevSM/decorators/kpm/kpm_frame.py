@@ -215,6 +215,7 @@ class XappKpmFrame(BaseXDevSMWrapper):
         self.logger.info("[XappKpmFrame] event trigger encoded: {}".format(encoded_ev_trig.byte_array_to_tuple()))
         
         actions = []
+        print("Action definition dict: {}".format(func_def))
         # encoding action defintion
         encoded_actions_def = function_definition_builder.action_encoder(action_def_dict=func_def, gran_period_ms=ran_period_ms, sst=sst, sd=sd)
 
