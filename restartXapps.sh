@@ -39,6 +39,7 @@ Usage: restartXapps.sh [options]
   -kpm   Riavvia solo kpm-basic-xapp
   -ho    Riavvia solo ho-control-xapp
   -n     Non esegue il build/push delle immagini (riusa la versione attuale)
+  -v X   Forza la versione X (es. 0.0.70)
   -h     Mostra questo messaggio
 Se non vengono passate opzioni, verranno gestite entrambe le xApp.
 USAGE
@@ -386,12 +387,22 @@ build_and_push_images(){
 
 # ── flusso principale ───────────────────────────────────────────────────────────
 SKIP_BUILD=false
+FORCED_VERSION=""
 TARGET_APPS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -kpm) TARGET_APPS+=("kpm-basic-xapp") ;;
     -ho) TARGET_APPS+=("ho-control-xapp") ;;
     -n) SKIP_BUILD=true ;;
+    -v)
+      shift
+      FORCED_VERSION="${1:-}"
+      if [[ -z "${FORCED_VERSION}" ]]; then
+        warn "Opzione -v richiede una versione (es. 0.0.70)"
+        usage
+        exit 1
+      fi
+      ;;
     -h|--help)
       usage
       exit 0
@@ -437,24 +448,33 @@ done
 ensure_chartmuseum
 
 current_version="$(determine_current_version "${TARGET_APPS[@]}")"
-next_version="$(increment_patch_version "${current_version}")"
+next_version="${current_version}"
 
-if [[ "${SKIP_BUILD}" == "true" ]]; then
-  available_version="$(determine_latest_available_image_version "${TARGET_APPS[@]}")"
-  if [[ -n "${available_version}" ]]; then
-    if version_gt "${available_version}" "${current_version}"; then
-      next_version="${available_version}"
-      log "Versione precedente: ${current_version}; build saltato (-n), uso la versione disponibile ${next_version}"
-    else
-      next_version="${current_version}"
-      log "Versione precedente: ${current_version}; build saltato (-n), nessuna versione piu' recente rilevata"
-    fi
+if [[ -n "${FORCED_VERSION}" ]]; then
+  if [[ ! "${FORCED_VERSION}" =~ ${SEMVER_REGEX} ]]; then
+    warn "Versione non valida specificata con -v: ${FORCED_VERSION}"
+    exit 1
+  fi
+  next_version="${FORCED_VERSION}"
+  if [[ "${SKIP_BUILD}" == "true" ]]; then
+    log "Build saltato (-n), uso versione specificata ${next_version}"
   else
-    next_version="${current_version}"
-    warn "Nessuna immagine locale con tag semver trovata per le xApp selezionate; mantengo la versione ${current_version}"
+    log "Uso versione specificata ${next_version} per build/push"
+  fi
+elif [[ "${SKIP_BUILD}" == "true" ]]; then
+  available_version="$(determine_latest_available_image_version "${TARGET_APPS[@]}")"
+  if [[ -n "${available_version}" && version_gt "${available_version}" "${current_version}" ]]; then
+    next_version="${available_version}"
+    log "Versione precedente: ${current_version}; build saltato (-n), uso la versione disponibile ${next_version}"
+  else
+    log "Versione precedente: ${current_version}; build saltato (-n), nessuna versione piu' recente rilevata (uso ${next_version})"
   fi
 else
+  next_version="$(increment_patch_version "${current_version}")"
   log "Versione precedente: ${current_version}; nuova versione: ${next_version}"
+fi
+
+if [[ "${SKIP_BUILD}" != "true" ]]; then
   build_and_push_images "${next_version}" "${TARGET_APPS[@]}"
   log "Rimuovo immagini locali obsolete"
   cleanup_old_local_images "${next_version}" "${TARGET_APPS[@]}"
