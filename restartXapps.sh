@@ -463,7 +463,7 @@ if [[ -n "${FORCED_VERSION}" ]]; then
   fi
 elif [[ "${SKIP_BUILD}" == "true" ]]; then
   available_version="$(determine_latest_available_image_version "${TARGET_APPS[@]}")"
-  if [[ -n "${available_version}" && version_gt "${available_version}" "${current_version}" ]]; then
+  if [[ -n "${available_version}" ]] && version_gt "${available_version}" "${current_version}"; then
     next_version="${available_version}"
     log "Versione precedente: ${current_version}; build saltato (-n), uso la versione disponibile ${next_version}"
   else
