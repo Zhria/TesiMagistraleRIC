@@ -127,6 +127,7 @@ class XappKpmFrame(BaseXDevSMWrapper):
             ))
             decoded_ind_msg.print_meas_info(xapp.logger)
         else:
+            decoded_ind_msg.print_meas_info(xapp.logger)
             self.__ind_msg_callback(decoded_ind_hdr, decoded_ind_msg, summary['meid'])
 
     # External APIs
