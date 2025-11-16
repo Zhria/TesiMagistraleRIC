@@ -90,11 +90,17 @@ class xAppMonControlContainer():
         self.xapp_gen.logger.info("[xAppMonControlContainer] Indication message count: {}".format(self.counter_indications))
         ue_id = None
         meas_report_ue = None
+        print("Indication message type {}".format(ind_msg.type.value))
+        print("Indication message data {}".format(ind_msg.data))
         if ind_msg.type.value == format_ind_msg_e.FORMAT_3_INDICATION_MESSAGE:
+            print("Decoding FORMAT_3_INDICATION_MESSAGE")
             # for each ue
             meas_report_ue = ind_msg.data.frm_3.meas_report_per_ue[0] # Take the first ue only
+            print("meas_report_ue:")    
+            print(meas_report_ue)
             # ue id
             ue_id = self.kpm_func.get_ue_id(meas_report_ue.ue_meas_report_lst)
+            print("ue_id got: {}".format(ue_id))
 
         self.xapp_gen.logger.info("[xAppMonControlContainer]gnb: {}, sender_name: {}, ue: {}".format(gnbid, sender_name, ue_id))
 
