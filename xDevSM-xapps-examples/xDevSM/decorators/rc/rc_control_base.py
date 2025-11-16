@@ -160,8 +160,9 @@ class RCControlBase(BaseXDevSMWrapper):
                                                control_header=control_header,
                                                control_message=control_message,
                                                ran_function_id=3)
+        payload = payload[:size]
         self.logger.info("[RCControlBase] Control Request, control header: {}".format(control_header))
-        self.logger.info("[RCControlBase] Sending RCControlRequest Message: {} ({})".format(size, payload))
+        self.logger.info("[RCControlBase] Sending RCControlRequest Message: {} ({})".format(len(payload), payload))
         sbuf = rmr.rmr_alloc_msg(vctx=self._mrc, size=len(payload), mtype=Values.RIC_CONTROL_REQ)
         rmr.set_payload_and_length(payload,sbuf)
         rmr.generate_and_set_transaction_id(sbuf)

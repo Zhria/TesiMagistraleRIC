@@ -6,7 +6,7 @@ REG_PORT="${2:-5000}"          # Porta del registry
 REG_NAME="registry"
 REG_IMAGE="registry:2"
 
-minikube start --cni=calico --driver=docker --memory 2200
+minikube start --cni=calico --driver=docker --memory 2800 --cpus 4;
 ./ric-plt-ric-dep/bin/install_common_templates_to_helm.sh
 ./ric-plt-ric-dep/bin/install -f ./ric-plt-ric-dep/RECIPE_EXAMPLE/example_recipe_latest_stable.yaml;
 
