@@ -27,17 +27,16 @@ string_to_level = {
                 "ERROR": Level.ERROR}
 
 class xAppMonControlContainer():
-    def __init__(self, xapp_gen: xDevSMRMRXapp, event_trigger, sst: int, sd: int,
-                 plmn_identity: str, nr_cell_id: str, decision_threshold: int = 10):
+    def __init__(self, xapp_gen: xDevSMRMRXapp, gnb_target: str, event_trigger, sst: int, sd: int,plmn_identity: str, nr_cell_id: str):
         self.xapp_gen = xapp_gen
+        self.gnb_target = gnb_target
         self.event_trigger = event_trigger*1000
         self.sst = sst
         self.sd = sd
         self.dest_plmn_identity = plmn_identity
         self.dest_nr_cell_id = nr_cell_id
-        self.decision_threshold = max(1, decision_threshold)
-        self.nodes = {}
-        self.control_dispatched = False
+
+        self.counter_indications = 0
         
         # Adding RC - HO functionality
         self.rc_func = ConnectedModeMobilityControl(self.xapp_gen,
@@ -78,11 +77,6 @@ class xAppMonControlContainer():
         Handle the indication message received from the xApp
         """
         gnbid = meid.decode('utf-8')
-        node = self.nodes.get(gnbid)
-        if node is None:
-            self.xapp_gen.logger.warning("[xAppMonControlContainer] Indication from unknown MEID {}".format(gnbid))
-            return
-
         self.xapp_gen.logger.info("[xAppMonControlContainer] Received indication message from {}".format(gnbid))
         sender_name = None
         if ind_hdr.data.kpm_ric_ind_hdr_format_1.sender_name:
@@ -92,9 +86,8 @@ class xAppMonControlContainer():
         if sender_name is None:
             self.xapp_gen.logger.info("[xAppMonControlContainer]Sender name not specified in the indication message")
 
-        node["counter"] += 1
-        self.xapp_gen.logger.info("[xAppMonControlContainer] Indication message count for {}: {}".format(
-            gnbid, node["counter"]))
+        self.counter_indications += 1
+        self.xapp_gen.logger.info("[xAppMonControlContainer] Indication message count: {}".format(self.counter_indications))
         ue_id = None
         meas_report_ue = None
         if ind_msg.type.value == format_ind_msg_e.FORMAT_3_INDICATION_MESSAGE:
@@ -103,17 +96,18 @@ class xAppMonControlContainer():
             # ue id
             ue_id = self.kpm_func.get_ue_id(meas_report_ue.ue_meas_report_lst)
 
-        if meas_report_ue is not None:
-            node["last_meas_report"] = meas_report_ue
-            score = self._extract_metric_score(meas_report_ue)
-            if score is not None:
-                node["metric_history"].append(score)
-                node["last_metric"] = score
-
         self.xapp_gen.logger.info("[xAppMonControlContainer]gnb: {}, sender_name: {}, ue: {}".format(gnbid, sender_name, ue_id))
 
-        if not self.control_dispatched and self._ready_to_decide():
-            self._dispatch_control()
+        if self.counter_indications == 10:
+            self.xapp_gen.logger.info("[xAppMonControlContainer] Sending HO Control Action to gNB {} --> target is plmn: {}, nr_cell_id: {}".format(gnbid, self.dest_plmn_identity, self.dest_nr_cell_id))
+            # Sending control request
+            self.rc_func.set_nr_cell_id(self.dest_nr_cell_id)
+            self.rc_func.set_plmn_identity(self.dest_plmn_identity)
+            self.rc_func.send(e2_node_id=self.selected_gnb.inventory_name,
+                            ran_func_dsc=self.rc_func_desc,
+                            ue_id=meas_report_ue.ue_meas_report_lst,  
+                            control_action_id=1)
+            self.kpm_func.terminate(signal.SIGTERM, None)
 
     def sub_failed_callback(self, json_data):
         self.xapp_gen.logger.info("[xAppMonControlContainer] subscription failed: {}".format(json_data))
@@ -121,171 +115,51 @@ class xAppMonControlContainer():
     def start(self):
         time.sleep(5)  # we need to wait the registration of RMR rule -> no callback defined in the osc framework
 
-        gnb_list = self._discover_connected_nodes()
-        if not gnb_list:
-            self.xapp_gen.logger.error("[Main] No connected gNBs discovered, terminating")
+        # Obtain gnb info
+        self.selected_gnb, gnb_info = self.xapp_gen.get_selected_e2node_info(self.gnb_target)
+        if not self.selected_gnb:
+            self.xapp_gen.logger.info("[Main] Terminating xapp")
             self.kpm_func.terminate(signal.SIGTERM, None)
             return
 
-        for gnb in gnb_list:
-            selected_gnb, gnb_info = gnb, self.xapp_gen.get_ran_info(gnb)
-            if not selected_gnb or not gnb_info:
-                self.xapp_gen.logger.warning("[Main] Unable to fetch gNB info")
-                continue
+        # Getting plmn_identity
+        plmn_id = gnb_info["globalNbId"]["plmnId"]
+        nr_cell_id = gnb_info["globalNbId"]["nbId"]
 
-            self.xapp_gen.logger.info("[Main] GNB INFO ({}): {}".format(selected_gnb.inventory_name, gnb_info))
-            if gnb_info.get("connectionStatus") != "CONNECTED":
-                self.xapp_gen.logger.info("[Main] E2 node {} not connected, skipping".format(selected_gnb.inventory_name))
-                continue
+        self.xapp_gen.logger.info("[xAppMonControlContainer] gnb target plmn identity: {}, nr_cell_id: {}".format(plmn_id, nr_cell_id))
+        self.rc_func.set_plmn_identity(plmn_id)
 
-            plmn_id = gnb_info["globalNbId"]["plmnId"]
-            nr_cell_id = gnb_info["globalNbId"]["nbId"]
-            self.dest_plmn_identity = plmn_id
-            self.dest_nr_cell_id = nr_cell_id
+        # Get kpm data
+        ran_function_description = self.kpm_func.get_ran_function_description(json_ran_info=gnb_info)
+        func_def_dict = ran_function_description.get_dict_of_values()
 
-            ran_function_description = self.kpm_func.get_ran_function_description(json_ran_info=gnb_info)
-            if ran_function_description is None:
-                self.xapp_gen.logger.error("[Main] Missing KPM ranFunctionDefinition for {}".format(selected_gnb.inventory_name))
-                continue
-            func_def_dict = ran_function_description.get_dict_of_values()
+        # Get RC function
+        self.rc_func_desc = self.rc_func.get_ran_function_description(json_ran_info=gnb_info)
+        self.rc_func_desc.print_rc_functions()
 
-            rc_func_desc = self.rc_func.get_ran_function_description(json_ran_info=gnb_info)
-            if rc_func_desc is None:
-                self.xapp_gen.logger.error("[Main] Missing RC ranFunctionDefinition for {}".format(selected_gnb.inventory_name))
-                continue
-            rc_func_desc.print_rc_functions()
-
-            func_def_sub_dict = {}
-            selected_format = format_action_def_e.END_ACTION_DEFINITION
-            if len(func_def_dict[format_action_def_e.FORMAT_4_ACTION_DEFINITION]) == 0:
-                selected_format = format_action_def_e.FORMAT_1_ACTION_DEFINITION
-            else:
-                selected_format = format_action_def_e.FORMAT_4_ACTION_DEFINITION
-            func_def_sub_dict[selected_format] = func_def_dict[selected_format]
-
-            ev_trigger_tuple = (0, self.event_trigger)
-            status = self.kpm_func.subscribe(gnb=selected_gnb,
-                                             ev_trigger=ev_trigger_tuple,
-                                             func_def=func_def_sub_dict,
-                                             ran_period_ms=1000,
-                                             sst=self.sst,
-                                             sd=self.sd)
-            if status != 201:
-                self.xapp_gen.logger.error("[xAppMonControlContainer] Error subscribing to gNB {}: {}".format(
-                    selected_gnb.inventory_name, status))
-                continue
-
-            self.nodes[selected_gnb.inventory_name] = {
-                "gnb": selected_gnb,
-                "info": gnb_info,
-                "plmn": plmn_id,
-                "nr_cell_id": nr_cell_id,
-                "rc_func_desc": rc_func_desc,
-                "counter": 0,
-                "metric_history": [],
-                "last_metric": None,
-                "last_meas_report": None,
-                "subscribed": True
-            }
-
-        if not self.nodes:
-            self.xapp_gen.logger.error("[Main] No successful subscriptions, terminating")
-            self.kpm_func.terminate(signal.SIGTERM, None)
-            return
-
-        self.xapp_gen.run()
-
-    def _discover_connected_nodes(self):
-        nodes = []
-        getter = getattr(self.xapp_gen, "get_list_gnb_ids", None)
-        if callable(getter):
-            try:
-                nodes = [gnb for gnb in getter() if getattr(gnb, "inventory_name", None)]
-            except Exception as exc:
-                self.xapp_gen.logger.error("[xAppMonControlContainer] Unable to retrieve gNB list: {}".format(exc))
-                nodes = []
+        func_def_sub_dict = {}
+        selected_format = format_action_def_e.END_ACTION_DEFINITION
+        if len(func_def_dict[format_action_def_e.FORMAT_4_ACTION_DEFINITION]) == 0:
+            selected_format = format_action_def_e.FORMAT_1_ACTION_DEFINITION
         else:
-            self.xapp_gen.logger.error("[xAppMonControlContainer] xapp_gen does not expose get_list_gnb_ids")
-        if not nodes:
-            self.xapp_gen.logger.warning("[xAppMonControlContainer] No gNBs returned by e2mgr")
-        return nodes
+            selected_format = format_action_def_e.FORMAT_4_ACTION_DEFINITION
+        func_def_sub_dict[selected_format] = func_def_dict[selected_format]
 
-    def _extract_metric_score(self, meas_report_ue):
-        fmt1 = meas_report_ue.ind_msg_format_1
-        if fmt1.meas_data_lst_len == 0:
-            return None
-        total = 0.0
-        count = 0
-        for idx in range(fmt1.meas_data_lst_len):
-            meas_data = fmt1.meas_data_lst[idx]
-            for rec_idx in range(meas_data.meas_record_len):
-                record = meas_data.meas_record_lst[rec_idx]
-                val_type = record.value.value
-                if val_type == meas_value_e.INTEGER_MEAS_VALUE:
-                    total += record.union.int_val
-                    count += 1
-                elif val_type == meas_value_e.REAL_MEAS_VALUE:
-                    total += record.union.real_val
-                    count += 1
-        if count == 0:
-            return None
-        return total / count
+        ev_trigger_tuple = (0, self.event_trigger)
+        status = self.kpm_func.subscribe(gnb=self.selected_gnb, ev_trigger=ev_trigger_tuple, func_def=func_def_sub_dict, ran_period_ms=1000, sst=self.sst, sd=self.sd)
 
-    def _ready_to_decide(self):
-        if not self.nodes:
-            return False
-        for node in self.nodes.values():
-            if not node.get("subscribed"):
-                continue
-            if node["counter"] < self.decision_threshold:
-                return False
-        return True
-
-    def _select_control_node(self):
-        best_meid = None
-        best_score = float("-inf")
-        for meid, node in self.nodes.items():
-            metric = node.get("last_metric")
-            if metric is None:
-                continue
-            if metric > best_score:
-                best_score = metric
-                best_meid = meid
-        if best_meid is None:
-            # fallback: select node with more indications
-            best_meid = max(self.nodes.items(), key=lambda item: item[1]["counter"])[0]
-        return best_meid, self.nodes[best_meid]
-
-    def _dispatch_control(self):
-        selection = self._select_control_node()
-        if selection is None:
-            self.xapp_gen.logger.warning("[xAppMonControlContainer] No node available for control dispatch")
+        if status != 201:
+            self.xapp_gen.logger.error("[xAppMonControlContainer] Error subscribing to gNB {}: {}".format(self.gnb.inventory_name, status))
+            self.kpm_func.terminate(signal.SIGTERM, None)
             return
-        meid, node = selection
-        meas_report = node.get("last_meas_report")
-        self.xapp_gen.logger.info("[xAppMonControlContainer] Sending HO Control Action to gNB {} --> target is plmn: {}, nr_cell_id: {}".format(
-            meid, self.dest_plmn_identity, self.dest_nr_cell_id))
-        self.rc_func.set_nr_cell_id(self.dest_nr_cell_id)
-        self.rc_func.set_plmn_identity(node.get("plmn", self.dest_plmn_identity))
-        ue_payload = None
-        if meas_report is not None:
-            ue_payload = meas_report.ue_meas_report_lst
-        self.rc_func.send(e2_node_id=node["gnb"].inventory_name,
-                          ran_func_dsc=node["rc_func_desc"],
-                          ue_id=ue_payload,
-                          control_action_id=1)
-        self.control_dispatched = True
-        #self.kpm_func.terminate(signal.SIGTERM, None)
+
+        # Running xApp Thread
+        self.xapp_gen.run()
 
 def main(args):
     xapp_gen = xDevSMRMRXapp("0.0.0.0", route_file=args.route_file)
     xapp_gen.logger.set_level(string_to_level[args.log_level])
-    xapp_container = xAppMonControlContainer(xapp_gen,
-                                             args.event_trigger,
-                                             args.sst,
-                                             args.sd,
-                                             args.plmn,
-                                             args.nr_cell_id)
+    xapp_container = xAppMonControlContainer(xapp_gen, args.gnb_target, args.event_trigger, args.sst, args.sd, args.plmn, args.nr_cell_id)
     xapp_container.start()
 
 if __name__ == '__main__':
@@ -307,6 +181,9 @@ if __name__ == '__main__':
                         help="Log level", type=str, default="INFO")
     parser.add_argument("-d", "--sd", metavar="<sd>",
                         help="SD", type=int, default=0)
+    parser.add_argument("-g", "--gnb_target", metavar="<gnb_target>",
+                        help="gNB to subscribe to",
+                        type=str)
                         
     args = parser.parse_args()
     main(args)

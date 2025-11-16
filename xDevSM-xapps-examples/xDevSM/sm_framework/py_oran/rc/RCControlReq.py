@@ -215,18 +215,6 @@ class RCControlReqWrapper():
             print("Log info not implemented for this type of control action")
         
 
-    def dump_hdr_struct_bytes(self):
-        """
-        Dump the raw bytes of the RCControlHdr structure. This avoids any
-        encoding/decoding step so we can compare exactly what is present
-        in memory before the ASN.1 encoder runs.
-        """
-        if not self.control_req or not hasattr(self.control_req, "hdr"):
-            return b""
-        raw_hdr = ctypes.string_at(ctypes.addressof(self.control_req.hdr), ctypes.sizeof(self.control_req.hdr))
-        print("[RCControlReqWrapper] Raw RCControlHdr bytes (len={}): {}".format(len(raw_hdr), raw_hdr))
-        return raw_hdr
-
     def log_header_details(self):
         """
         Print a human readable view of every field that ends up in the RC control header.
@@ -253,18 +241,6 @@ class RCControlReqWrapper():
             else:
                 print("RIC Control Decision: None")
             self._log_ue_id_details(hdr.union.frmt_1.ue_id)
-        elif fmt_val == e2sm_rc_ctrl_hdr_e.FORMAT_2_E2SM_RC_CTRL_HDR:
-            ue_ptr = hdr.union.frmt_2.ue_id
-            if ue_ptr:
-                self._log_ue_id_details(ue_ptr.contents)
-            else:
-                print("UE ID: None")
-            if hdr.union.frmt_2.ric_ctrl_dec:
-                dec_val = int(hdr.union.frmt_2.ric_ctrl_dec.contents.value)
-                dec_name = self._enum_name(ric_ctrl_dec_ctrl_hdr_frmt_2_e, dec_val)
-                print("RIC Control Decision (fmt2): {} ({})".format(dec_val, dec_name))
-            else:
-                print("RIC Control Decision (fmt2): None")
         else:
             print("[RCControlReqWrapper] Unsupported RC control header format {}".format(fmt_val))
 
