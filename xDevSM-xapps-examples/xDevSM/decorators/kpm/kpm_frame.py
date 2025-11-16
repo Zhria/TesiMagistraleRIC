@@ -121,6 +121,13 @@ class XappKpmFrame(BaseXDevSMWrapper):
         # Indication msg - decoding E2SM
         ind_msg_mgr = KpmIndicationMsg.KpmIndMsgWrapper(ba_ind_msg)
         decoded_ind_msg = ind_msg_mgr.decode()
+        diag_output = getattr(ind_msg_mgr, "last_decode_log", "")
+        if diag_output:
+            xapp.logger.error("[XappKpmFrame] KPM decoder stderr output for %s: %s", summary.get('meid', 'unknown'), diag_output)
+
+        if decoded_ind_msg is None:
+            xapp.logger.error("[XappKpmFrame] Failed to decode KPM indication from %s, dropping message", summary.get('meid', 'unknown'))
+            return
 
         if self.__ind_msg_callback is None:
             xapp.logger.info("[XappKpmFrame] No indication message callback registered - printing default information")
