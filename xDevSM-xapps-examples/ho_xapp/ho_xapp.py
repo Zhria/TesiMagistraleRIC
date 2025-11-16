@@ -138,6 +138,7 @@ class xAppMonControlContainer():
         # Get kpm data
         ran_function_description = self.kpm_func.get_ran_function_description(json_ran_info=gnb_info)
         func_def_dict = ran_function_description.get_dict_of_values()
+        print("KPM Function Definition Dictionary: {}".format(func_def_dict))
 
         # Get RC function
         self.rc_func_desc = self.rc_func.get_ran_function_description(json_ran_info=gnb_info)
@@ -150,7 +151,7 @@ class xAppMonControlContainer():
         else:
             selected_format = format_action_def_e.FORMAT_4_ACTION_DEFINITION
         func_def_sub_dict[selected_format] = func_def_dict[selected_format]
-
+        print("Selected Format for actinon definition subscription: {}".format(selected_format))
         ev_trigger_tuple = (0, self.event_trigger)
         status = self.kpm_func.subscribe(gnb=self.selected_gnb, ev_trigger=ev_trigger_tuple, func_def=func_def_sub_dict, ran_period_ms=1000, sst=self.sst, sd=self.sd)
 
