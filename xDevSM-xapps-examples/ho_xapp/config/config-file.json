@@ -1,6 +1,6 @@
 {
     "name": "ho-control-xapp",
-    "version": "0.0.91",
+    "version": "0.0.92",
     "appInstanceName": "ho-control-xapp",
     "containers": [
         {
@@ -8,7 +8,7 @@
             "image": {
                 "registry": "docker.io",
                 "name": "zhria/handover_app",
-                "tag": "0.0.91"
+                "tag": "0.0.92"
             },
             "imagePullPolicy": "Always"
         }
