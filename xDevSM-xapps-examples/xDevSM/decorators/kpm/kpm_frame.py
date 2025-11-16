@@ -1,4 +1,5 @@
 import json
+import binascii
 from typing import Tuple
 
 from decorators.base import BaseXDevSMWrapper
@@ -93,6 +94,7 @@ class XappKpmFrame(BaseXDevSMWrapper):
 
         # decoding E2AP
         indm.decode(summary[rmr.RMR_MS_PAYLOAD])
+        self._log_raw_indication_payload(summary.get('meid', 'unknown'), indm)
 
         ba_ind_header = utility.get_c_byte_array_from_py_byte_string(indm.indication_header)
         ba_ind_msg = utility.get_c_byte_array_from_py_byte_string(indm.indication_message)
@@ -164,6 +166,31 @@ class XappKpmFrame(BaseXDevSMWrapper):
             return
         else:
             del self.subscription_id[to_remove]
+
+    def _log_raw_indication_payload(self, meid, indm, max_hex_chars=512):
+        """
+        Dump raw E2AP header/message bytes before the ASN.1 decoder is invoked.
+        Helps distinguishing failures in subscription (HTTP) vs failures in indication decode.
+        """
+        try:
+            header_bytes = bytes(indm.indication_header or b"")
+        except TypeError:
+            header_bytes = b""
+        try:
+            msg_bytes = bytes(indm.indication_message or b"")
+        except TypeError:
+            msg_bytes = b""
+
+        header_hex = self._truncate_hex(header_bytes, max_hex_chars)
+        msg_hex = self._truncate_hex(msg_bytes, max_hex_chars)
+        print("[XappKpmFrame] Raw indication header from {} len={} hex={}".format(meid, len(header_bytes), header_hex))
+        print("[XappKpmFrame] Raw indication message from {} len={} hex={}".format(meid, len(msg_bytes), msg_hex))
+
+    def _truncate_hex(self, blob: bytes, max_chars: int):
+        if not blob:
+            return ""
+        hex_str = binascii.hexlify(blob).decode("ascii")
+        return hex_str
     
 
     def subscribe(self, gnb, ev_trigger: Tuple[int, float], func_def: dict, action_type=Values.ACTION_TYPE, ran_period_ms=1000, sst=1, sd=0):
