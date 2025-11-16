@@ -32,56 +32,34 @@ COPY --from=stretch /usr/local/lib/libriclibe2ap.so /usr/local/lib/libriclibe2ap
 RUN chmod -R 755 /usr/local/lib/librmr_si.so
 RUN chmod -R 755 /usr/local/lib/libriclibe2ap.so
 
-# Base tooling and system packages (git required for VCS pip installs)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        git \
-        htop \
-        nano \
-        procps && \
-    rm -rf /var/lib/apt/lists/*
+# Upgrade pip, install tox
+RUN pip install --upgrade pip && pip install certifi six python_dateutil setuptools urllib3 logger requests inotify_simple mdclogpy google-api-python-client msgpack ricsdl
+RUN apt update
+RUN apt install -y htop nano procps
 
-RUN mkdir -p /ws && chmod -R 755 /ws
-WORKDIR /ws
+RUN mkdir -p /ws
+RUN chmod -R 755 /ws
+WORKDIR "/ws" 
 
 COPY ho_xapp .
 COPY xDevSM ./xDevSM
 
-RUN pip install --upgrade pip setuptools wheel && \
-    pip install certifi six python_dateutil urllib3 logger requests inotify_simple mdclogpy google-api-python-client msgpack ricsdl && \
-    pip install -r requirements.txt
 
-# Expose shared libraries and install xDevSM into site-packages for reliable imports
-RUN cp xDevSM/sm_framework/lib/*.so /usr/local/lib/ && \
-    python - <<'PY'
-import shutil
-import sysconfig
-from pathlib import Path
+# COPY ./sm_py_framework/lib/*.so /usr/local/lib/
 
-src = Path('/ws/xDevSM')
-dst = Path(sysconfig.get_path('purelib')) / 'xDevSM'
-
-if dst.exists():
-    shutil.rmtree(dst)
-
-shutil.copytree(src, dst)
-PY
-
-RUN echo "/ws/xDevSM" > /usr/local/lib/python3.8/site-packages/xdevsm-local.pth
-
+RUN pip install -r requirements.txt
 RUN sed -i 's/^\([[:space:]]*\)# \(_asn1_free_indicationMsg(indication)\)/\1\2/' /usr/local/lib/python3.8/site-packages/ricxappframe/e2ap/asn1.py
 
 
 ENV CONFIG_FILE=/ws/config/config-file.json
-ENV LD_LIBRARY_PATH=/lib:/usr/lib:/usr/local/lib
-ENV PYTHONPATH=/ws:/ws/xDevSM
+ENV LD_LIBRARY_PATH=/lib:/usr/lib:/usr/local/lib:/ws/xDevSM/sm_framework/lib
 
 # This is used to supply a static route table which can be used for debugging, 
 # testing, or if no route table generator process is being used to supply the route table. 
 # If not defined, no static table is used and RMR will not report ready until a table is received. 
 # The static route table may contain both the route table (between newrt start and end records), 
 # and the MEID map (between meid_map start and end records).
-ENV RMR_SEED_RT=./config/uta_rtg.rt
+ENV RMR_SEED_RT ./config/uta_rtg.rt
 
 
 # Manual start
