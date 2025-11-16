@@ -111,7 +111,7 @@ if [[ "${BUILD_IMAGE}" == "true" ]]; then
   log "Aggiornato config-file.json: ${CURRENT_VERSION} -> ${IMAGE_VERSION}"
 
   log "Build immagine ${IMAGE_REPO}:${IMAGE_VERSION}"
-  docker build \
+  docker build --no-cache \
     -f "${DOCKERFILE}" \
     -t "${IMAGE_REPO}:${IMAGE_VERSION}" \
     -t "${IMAGE_REPO}:latest" \
