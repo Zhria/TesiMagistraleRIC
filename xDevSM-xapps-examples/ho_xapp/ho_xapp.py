@@ -86,13 +86,14 @@ class xAppMonControlContainer():
         if sender_name is None:
             self.xapp_gen.logger.info("[xAppMonControlContainer]Sender name not specified in the indication message")
 
+
         self.counter_indications += 1
         self.xapp_gen.logger.info("[xAppMonControlContainer] Indication message count: {}".format(self.counter_indications))
         ue_id = None
         meas_report_ue = None
-        print("Indication message type {}".format(ind_msg.type.value))
+        print("Indication message type {}".format(ind_msg.type))
         print("Indication message data {}".format(ind_msg.data))
-        if ind_msg.type.value == format_ind_msg_e.FORMAT_3_INDICATION_MESSAGE:
+        if ind_msg.type == format_ind_msg_e.FORMAT_3_INDICATION_MESSAGE:
             print("Decoding FORMAT_3_INDICATION_MESSAGE")
             # for each ue
             meas_report_ue = ind_msg.data.frm_3.meas_report_per_ue[0] # Take the first ue only
@@ -117,6 +118,7 @@ class xAppMonControlContainer():
 
     def sub_failed_callback(self, json_data):
         self.xapp_gen.logger.info("[xAppMonControlContainer] subscription failed: {}".format(json_data))
+        self.kpm_func.terminate(signal.SIGTERM, None)
 
     def start(self):
         time.sleep(5)  # we need to wait the registration of RMR rule -> no callback defined in the osc framework
