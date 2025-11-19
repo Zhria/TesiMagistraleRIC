@@ -92,6 +92,7 @@ class xAppMonControlContainer():
         ue_id = None
         meas_report_ue = None
         print("Indication message type {}".format(ind_msg.type))
+        print("Indication message type value {}".format(ind_msg.type.value))
         print("Indication message data {}".format(ind_msg.data))
         if ind_msg.type == format_ind_msg_e.FORMAT_3_INDICATION_MESSAGE:
             print("Decoding FORMAT_3_INDICATION_MESSAGE")
@@ -151,8 +152,7 @@ class xAppMonControlContainer():
         if len(func_def_dict[format_action_def_e.FORMAT_4_ACTION_DEFINITION]) == 0:
             selected_format = format_action_def_e.FORMAT_1_ACTION_DEFINITION
         else:
-            #selected_format = format_action_def_e.FORMAT_4_ACTION_DEFINITION
-            selected_format = format_action_def_e.FORMAT_5_ACTION_DEFINITION
+            selected_format = format_action_def_e.FORMAT_4_ACTION_DEFINITION
         func_def_sub_dict[selected_format] = func_def_dict[selected_format]
         print("Selected Format for actinon definition subscription: {}".format(selected_format))
         ev_trigger_tuple = (0, self.event_trigger)
