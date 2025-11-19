@@ -1,6 +1,4 @@
 import ctypes
-import os
-import sys
 from sm_framework.py_oran.ByteArray import ByteArray
 from sm_framework.py_oran.kpm.enums import *
 from sm_framework.lib.library_wrapper import wrapper, kpm_lib, wrap_functions
@@ -410,15 +408,12 @@ class KpmIndMsg(ctypes.Structure):
                     print(f"gran_period_ms is not set for UE {i}.")
         else:
             print("Unknown format type.")
-    
-    def print_meas_info(self, logger: Logger):
-        
-        # print("~~~~~~~~~~ DATA FROM {} ~~~~~~~~~~".format(gnb_inventory_name))
 
+    def print_meas_info(self, logger: Logger):
         if self.type.value == format_ind_msg_e.FORMAT_1_INDICATION_MESSAGE:
             logger.debug("received indication message format 1")
             self.print_meas_info_frmt_1(logger=logger, frmt_1=self.data.frm_1)
-            
+
         elif self.type.value == format_ind_msg_e.FORMAT_2_INDICATION_MESSAGE:
             logger.debug("received indication message format 2 - not supported yet")
         elif self.type.value == format_ind_msg_e.FORMAT_3_INDICATION_MESSAGE:
@@ -445,26 +440,17 @@ class KpmIndMsg(ctypes.Structure):
             logger.debug("printing info regarding ue[{}]".format(i))
             meas_data_lst = frmt_1.meas_data_lst
             for k in range(meas_data_lst[i].meas_record_len):
-                if not frmt_1.meas_info_lst or k >= frmt_1.meas_info_lst_len:
-                    logger.debug("meas_info entry missing for record {} – skipping".format(k))
-                    continue
-
-                meas_info = frmt_1.meas_info_lst[k]
-                if not meas_info:
-                    logger.debug("meas_info pointer is null for record {} – skipping".format(k))
-                    continue
-
                 meas_record_lst_el = meas_data_lst[i].meas_record_lst[k]
-                if meas_info.meas_type.type.value == meas_type_enum.NAME_MEAS_TYPE:
-                    self.log_values(logger, meas_info.meas_type.value.name, meas_record_lst_el, type=meas_record_lst_el.value.value)
-                if meas_info.label_info_lst_len > 0:
-                    label_list = meas_info.label_info_lst
-                    self.print_labels(logger=logger, label_size=meas_info.label_info_lst_len, label_list=label_list)
+                if frmt_1.meas_info_lst[k].meas_type.type.value == meas_type_enum.NAME_MEAS_TYPE:
+                    self.log_values(logger, frmt_1.meas_info_lst[k].meas_type.value.name, meas_record_lst_el, type=meas_record_lst_el.value.value)
+                if frmt_1.meas_info_lst[k].label_info_lst_len > 0:
+                    label_list = frmt_1.meas_info_lst[k].label_info_lst
+                    self.print_labels(logger=logger, label_size=frmt_1.meas_info_lst[k].label_info_lst_len, label_list=label_list)
 
-                elif meas_info.meas_type.type.value == meas_type_enum.ID_MEAS_TYPE:
-                    self.log_values_id(logger, meas_info.meas_type.value.id, meas_record_lst_el)
+                elif frmt_1.meas_info_lst[k].meas_type.type.value == meas_type_enum.ID_MEAS_TYPE:
+                    self.log_values_id(logger, frmt_1.meas_info_lst[k].meas_type.value.id, meas_record_lst_el)
                 else:
-                    logger.info("Not supported meas type {}".format(meas_info.meas_type.type.value))
+                    logger.info("Not supported meas type {}".format(self.data.frm_1.meas_info_lst[k].meas_type.type.value))
 
     def print_labels(self, logger: Logger, label_size: ctypes.c_size_t, label_list: label_info_lst_t):
         
@@ -504,7 +490,7 @@ class KpmIndMsg(ctypes.Structure):
         
         if not printed:
             logger.info("Measurement Id not yet supported")
-    
+
     def log_values_id(self, logger: Logger, byte_array, meas_record: meas_record_lst_t):
         logger.info("received id value - not supported yet: {}".format(byte_array))
 
@@ -568,40 +554,14 @@ class KpmIndMsgWrapper():
     def __init__(self, byte_array: ByteArray):
         self.kpm_ind_msg: KpmIndMsg = None
         self.byte_array = byte_array
-        self.last_decode_log: str = ""
         self.free = wrap_functions(kpm_lib, 'free_kpm_ind_msg', None, [ctypes.POINTER(KpmIndMsg)])
         self.decode_indication_msg = wrap_functions(kpm_lib, 'kpm_dec_ind_msg_asn', KpmIndMsg, [ctypes.c_size_t, ctypes.POINTER(ctypes.c_uint8)])
 
     def decode(self) -> KpmIndMsg:
         if self.byte_array is None:
-            self.last_decode_log = "byte_array is None, skipping decode"
             return None
-        self.kpm_ind_msg = self._decode_with_stderr_capture()
+        self.kpm_ind_msg = self.decode_indication_msg(len(self.byte_array), self.byte_array)
         return self.kpm_ind_msg
 
     def __del__(self):
         self.free(self.kpm_ind_msg)
-
-    def _decode_with_stderr_capture(self) -> KpmIndMsg:
-        """
-        Call the ASN.1 decoder while capturing anything the C library writes to stderr.
-        """
-        stderr_fd = sys.stderr.fileno()
-        saved_stderr = os.dup(stderr_fd)
-        read_fd, write_fd = os.pipe()
-        os.dup2(write_fd, stderr_fd)
-        os.close(write_fd)
-        diag_bytes = b""
-        result = None
-        try:
-            result = self.decode_indication_msg(len(self.byte_array), self.byte_array)
-        finally:
-            os.dup2(saved_stderr, stderr_fd)
-            os.close(saved_stderr)
-            # Read whatever the decoder printed (if anything)
-            try:
-                diag_bytes = os.read(read_fd, 65536)
-            finally:
-                os.close(read_fd)
-        self.last_decode_log = diag_bytes.decode(errors="ignore").strip()
-        return result

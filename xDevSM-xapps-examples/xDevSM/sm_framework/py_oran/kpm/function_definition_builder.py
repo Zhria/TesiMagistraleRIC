@@ -90,7 +90,7 @@ def action_encoder(action_def_dict, gran_period_ms=1000, sst=1, sd=0) -> ByteArr
       action definitions. Default value is 1000 milliseconds.
 
     Returns:
-    - The result from the `encode_action_def` function, which processes the C-style array of
+    - The result from the `encode_action_def` function, which processes the C-style array of 
       encoded action definitions.
     """
 
@@ -99,7 +99,6 @@ def action_encoder(action_def_dict, gran_period_ms=1000, sst=1, sd=0) -> ByteArr
         if format == format_action_def_e.FORMAT_2_ACTION_DEFINITION or format == format_action_def_e.FORMAT_5_ACTION_DEFINITION:
             print("skipping - format not supported yet ({})".format(format))
             continue
-
         act_gnb_bytes = [s.encode() for s in action_def_dict[format]]
 
         act_gnb_c = (ctypes.c_char_p * (len(action_def_dict[format]) + 1))()  # Adding 1 to include space for terminating null pointer

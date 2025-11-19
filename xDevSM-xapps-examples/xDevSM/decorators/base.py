@@ -8,7 +8,6 @@ class BaseXDevSMWrapper(BasexDevSMXapp):
     """
 
     def __init__(self, xapp_handler: BasexDevSMXapp, logger, http_server):
-        print("BaseXDevSMWrapper init called")
         self._xapp_handler = xapp_handler
         self.outer_handle = self.handle
         self.logger = logger
@@ -26,4 +25,3 @@ class BaseXDevSMWrapper(BasexDevSMXapp):
 
     def get_ran_function_description(self, json_ran_info):
         self._xapp_handler.get_ran_function_description(json_ran_info)
-
