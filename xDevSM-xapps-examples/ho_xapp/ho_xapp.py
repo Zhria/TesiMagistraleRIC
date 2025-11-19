@@ -151,7 +151,8 @@ class xAppMonControlContainer():
         if len(func_def_dict[format_action_def_e.FORMAT_4_ACTION_DEFINITION]) == 0:
             selected_format = format_action_def_e.FORMAT_1_ACTION_DEFINITION
         else:
-            selected_format = format_action_def_e.FORMAT_4_ACTION_DEFINITION
+            #selected_format = format_action_def_e.FORMAT_4_ACTION_DEFINITION
+            selected_format = format_action_def_e.FORMAT_5_ACTION_DEFINITION
         func_def_sub_dict[selected_format] = func_def_dict[selected_format]
         print("Selected Format for actinon definition subscription: {}".format(selected_format))
         ev_trigger_tuple = (0, self.event_trigger)
