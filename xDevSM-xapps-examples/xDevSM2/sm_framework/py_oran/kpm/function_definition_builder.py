@@ -96,7 +96,6 @@ def action_encoder(action_def_dict, gran_period_ms=1000, sst=1, sd=0) -> ByteArr
 
     result = {}
     for format in action_def_dict.keys():
-        
         if format == format_action_def_e.FORMAT_2_ACTION_DEFINITION or format == format_action_def_e.FORMAT_5_ACTION_DEFINITION:
             print("skipping - format not supported yet ({})".format(format))
             continue
@@ -106,7 +105,7 @@ def action_encoder(action_def_dict, gran_period_ms=1000, sst=1, sd=0) -> ByteArr
         act_gnb_c[:-1] = [ctypes.c_char_p(s) for s in act_gnb_bytes]  # Assigning all elements
 
         act_gnb_c[-1] = None
-        print("Encoding action definition for format {}".format(format))
+
         ba : ByteArray = encode_action_def(act_gnb_c, gran_period_ms, format, sst, sd)
         if ba.len != 0:
             result[format] = ba

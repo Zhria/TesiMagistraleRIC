@@ -99,10 +99,12 @@ class XappKpmFrame(BaseXDevSMWrapper):
         
         if ba_ind_header is None:
             # information not decoded correctly
+            xapp.logger.info("[XappKpmFrame] indication header not decoded correctly")
             return
         
         if ba_ind_msg is None:
             # information not decoded correctly
+            xapp.logger.info("[XappKpmFrame] indication message not decoded correctly")
             return
         
         
@@ -127,6 +129,7 @@ class XappKpmFrame(BaseXDevSMWrapper):
             ))
             decoded_ind_msg.print_meas_info(xapp.logger)
         else:
+            decoded_ind_msg.print_meas_info(xapp.logger)
             self.__ind_msg_callback(decoded_ind_hdr, decoded_ind_msg, summary['meid'])
 
     # External APIs

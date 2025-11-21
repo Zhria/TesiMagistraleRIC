@@ -7,12 +7,16 @@ class ran_parameter_def_type_e(ctypes.c_uint):
     END_RAN_PARAMETER_DEF_TYPE = 2
 
 
+# class e2sm_rc_ctrl_hdr_e(ctypes.c_uint):
+#   FORMAT_1_E2SM_RC_CTRL_HDR = 0
+#   FORMAT_2_E2SM_RC_CTRL_HDR = 1
+#   END_E2SM_RC_CTRL_HDR = 2 
+
 class e2sm_rc_ctrl_hdr_e(ctypes.c_uint):
-  FORMAT_1_E2SM_RC_CTRL_HDR = 0
-  FORMAT_2_E2SM_RC_CTRL_HDR = 1
-  END_E2SM_RC_CTRL_HDR = 2 
-
-
+   FORMAT_1_E2SM_RC_CTRL_HDR = 0
+   FORMAT_2_E2SM_RC_CTRL_HDR = 1
+   END_E2SM_RC_CTRL_HDR = 2
+   
 class gnb_type_id_e(ctypes.c_uint):
     GNB_TYPE_ID = 0
     END_TYPE_ID = 1
@@ -62,11 +66,10 @@ class ric_ctrl_dec_ctrl_hdr_frmt_2_e(ctypes.c_int):
 
     END_RIC_CTRL_DEC_CTRL_HDR_FRMT_2 = 3
 
-class e2sm_rc_ctrl_hdr_e(ctypes.c_int):
-    FORMAT_1_E2SM_RC_CTRL_HDR = 0
-    FORMAT_2_E2SM_RC_CTRL_HDR = 1
-    
-    END_E2SM_RC_CTRL_HDR = 2
+# class e2sm_rc_ctrl_hdr_e(ctypes.c_int):
+#     FORMAT_1_E2SM_RC_CTRL_HDR = 0
+#     FORMAT_2_E2SM_RC_CTRL_HDR = 1
+#     END_E2SM_RC_CTRL_HDR = 2
 
 class ran_parameter_val_type_e(ctypes.c_int):
     ELEMENT_KEY_FLAG_TRUE_RAN_PARAMETER_VAL_TYPE = 0
