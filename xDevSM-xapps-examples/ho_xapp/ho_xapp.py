@@ -85,16 +85,16 @@ class xAppMonControlContainer():
         
         if sender_name is None:
             self.xapp_gen.logger.info("[xAppMonControlContainer]Sender name not specified in the indication message")
-
+        else:
+            self.xapp_gen.logger.info("[xAppMonControlContainer] Sender name: {}".format(sender_name))
 
         self.counter_indications += 1
         self.xapp_gen.logger.info("[xAppMonControlContainer] Indication message count: {}".format(self.counter_indications))
         ue_id = None
         meas_report_ue = None
-        print("Indication message type {}".format(ind_msg.type))
         print("Indication message type value {}".format(ind_msg.type.value))
-        print("Indication message data {}".format(ind_msg.data))
-        if ind_msg.type == format_ind_msg_e.FORMAT_3_INDICATION_MESSAGE:
+        if ind_msg.type.value == format_ind_msg_e.FORMAT_3_INDICATION_MESSAGE:
+            print("Indication message data {}".format(ind_msg.data))
             print("Decoding FORMAT_3_INDICATION_MESSAGE")
             # for each ue
             meas_report_ue = ind_msg.data.frm_3.meas_report_per_ue[0] # Take the first ue only
