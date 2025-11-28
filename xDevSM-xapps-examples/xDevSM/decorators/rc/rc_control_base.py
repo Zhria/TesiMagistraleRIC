@@ -1,223 +1,189 @@
-import requests
-import ctypes
+import time
+import argparse
+import signal
 import numpy as np
+import setup_imports
 
-from decorators.base import BaseXDevSMWrapper
+from mdclogpy import Level
 
-# osc xappframe
-from ricxappframe.xapp_frame import rmr
-from ricxappframe.e2ap.asn1 import ControlRequestMsg
+# import xDevSM base xapp
+from xDevSM.handlers.xDevSM_rmr_xapp import xDevSMRMRXapp
 
-# utility
-from utils.constants import Values
+# import RC Radio Resource Allocation Control Decorator
+from xDevSM.decorators.rc.rc_connected_mode_mobility import ConnectedModeMobilityControl
+from xDevSM.decorators.kpm.kpm_frame import XappKpmFrame
 
-# sm framework
-import sm_framework.py_oran.rc.RCFunctionDef as funcdef
-import sm_framework.py_oran.rc.RCControlReq as ctrlReq
-import sm_framework.py_oran.rc.RCControlHdr as ctrlhdr
-import sm_framework.py_oran.kpm.KpmIndicationMsg as kpmmsg
+# kpm related formats
+from xDevSM.sm_framework.py_oran.kpm.enums import format_action_def_e
+from xDevSM.sm_framework.py_oran.kpm.enums import format_ind_msg_e
+from xDevSM.sm_framework.py_oran.kpm.enums import meas_type_enum
+from xDevSM.sm_framework.py_oran.kpm.enums import meas_value_e
 
-class RCControlBase(BaseXDevSMWrapper):
-    def __init__(self, xapp_handler, logger, server, xapp_name, rmr_port, mrc, http_port, pltnamespace, app_namespace, ue_id_type=None, ue_id=None):
 
-        super().__init__(xapp_handler, logger, server)
+string_to_level = {
+                "DEBUG": Level.DEBUG,
+                "INFO": Level.INFO,
+                "WARNING": Level.WARNING,
+                "ERROR": Level.ERROR}
+
+class xAppMonControlContainer():
+    def __init__(self, xapp_gen: xDevSMRMRXapp, gnb_target: str, event_trigger, sst: int, sd: int,plmn_identity: str, nr_cell_id: str):
+        self.xapp_gen = xapp_gen
+        self.gnb_target = gnb_target
+        self.event_trigger = event_trigger*1000
+        self.sst = sst
+        self.sd = sd
+        self.dest_plmn_identity = plmn_identity
+        self.dest_nr_cell_id = nr_cell_id
+
+        self.counter_indications = 0
         
-        # xApps parameters
-        self.xapp_name = xapp_name
-        self.rmr_port = rmr_port
-        self._mrc = mrc
-        self.http_port = http_port
-        self.pltnamespace = pltnamespace
-        self.app_namespace = app_namespace
+        # Adding RC - HO functionality
+        self.rc_func = ConnectedModeMobilityControl(self.xapp_gen,
+                                            logger=self.xapp_gen.logger,
+                                            server=self.xapp_gen.server,
+                                            xapp_name=self.xapp_gen.get_xapp_name(),
+                                            rmr_port=self.xapp_gen.rmr_port,
+                                            mrc=self.xapp_gen._mrc,
+                                            http_port=self.xapp_gen.http_port,
+                                            pltnamespace=self.xapp_gen.get_pltnamespace(),
+                                            app_namespace=self.xapp_gen.get_app_namespace(),
+                                            # control parameters
+                                            plmn_identity=plmn_identity,
+                                            nr_cell_id=nr_cell_id
+                                            )
+        # Adding KPM functionality
+        self.kpm_func = XappKpmFrame(self.rc_func, 
+                                     self.xapp_gen.logger, 
+                                     self.xapp_gen.server, 
+                                     self.xapp_gen.get_xapp_name(), 
+                                     self.xapp_gen.rmr_port, 
+                                     self.xapp_gen.http_port, 
+                                     self.xapp_gen.get_pltnamespace(), 
+                                     self.xapp_gen.get_app_namespace())
+        
+        self.xapp_gen.register_handler(self.kpm_func.handle)
 
-        # ue id parameters
-        self.ue_id_type = ue_id_type
-        self.ue_id = ue_id
+        self.kpm_func.register_ind_msg_callback(self.ind_msg_handler)
+        self.kpm_func.register_sub_fail_callback(self.sub_failed_callback)
 
-        # protocol stack parameters
 
-        self.rc_function_def_wrapper = funcdef.RCFuncDefWrapper(hex="")
-        self.wrapper = ctrlReq.RCControlReqWrapper()
-        self.service_style_name = None
-        self.style = None
-        self.add_rmr_rule()
-    
-    
-    def handle(self, xapp, summary, sbuf):
-        if summary[rmr.RMR_MS_MSG_TYPE] == Values.RIC_CONTROL_ACK:
-            xapp.logger.info("[RCControlBase] Received control ack")
-            xapp.logger.debug("[RCControlBase] {}".format(summary))
-        elif summary[rmr.RMR_MS_MSG_TYPE] == Values.RIC_CONTROL_FAILURE:
-            xapp.logger.error("[RCControlBase] Received failure ack")
-            xapp.logger.debug("[RCControlBase] {}".format(summary))
+        signal.signal(signal.SIGINT, self.kpm_func.terminate)
+        signal.signal(signal.SIGTERM, self.kpm_func.terminate)
+
+
+    def ind_msg_handler(self, ind_hdr, ind_msg, meid):
+        """
+        Handle the indication message received from the xApp
+        """
+        gnbid = meid.decode('utf-8')
+        self.xapp_gen.logger.info("[xAppMonControlContainer] Received indication message from {}".format(gnbid))
+        sender_name = None
+        if ind_hdr.data.kpm_ric_ind_hdr_format_1.sender_name:
+            my_string = bytes(np.ctypeslib.as_array(ind_hdr.data.kpm_ric_ind_hdr_format_1.sender_name.contents.buf, shape = (ind_hdr.data.kpm_ric_ind_hdr_format_1.sender_name.contents.len,)))
+            sender_name = my_string.decode('utf-8') 
+        
+        if sender_name is None:
+            self.xapp_gen.logger.info("[xAppMonControlContainer]Sender name not specified in the indication message")
+
+        self.counter_indications += 1
+        self.xapp_gen.logger.info("[xAppMonControlContainer] Indication message count: {}".format(self.counter_indications))
+        ue_id = None
+        meas_report_ue = None
+        if ind_msg.type.value == format_ind_msg_e.FORMAT_3_INDICATION_MESSAGE:
+            # for each ue
+            meas_report_ue = ind_msg.data.frm_3.meas_report_per_ue[0] # Take the first ue only
+            # ue id
+            ue_id = self.kpm_func.get_ue_id(meas_report_ue.ue_meas_report_lst)
+
+        self.xapp_gen.logger.info("[xAppMonControlContainer]gnb: {}, sender_name: {}, ue: {}".format(gnbid, sender_name, ue_id))
+
+        if self.counter_indications == 10:
+            self.xapp_gen.logger.info("[xAppMonControlContainer] Sending HO Control Action to gNB {} --> target is plmn: {}, nr_cell_id: {}".format(gnbid, self.dest_plmn_identity, self.dest_nr_cell_id))
+            # Sending control request
+            self.rc_func.set_nr_cell_id(self.dest_nr_cell_id)
+            self.rc_func.set_plmn_identity(self.dest_plmn_identity)
+            self.rc_func.send(e2_node_id=self.selected_gnb.inventory_name,
+                            ran_func_dsc=self.rc_func_desc,
+                            ue_id_struct=meas_report_ue.ue_meas_report_lst,  
+                            control_action_id=1)
+            self.kpm_func.terminate(signal.SIGTERM, None)
+
+    def sub_failed_callback(self, json_data):
+        self.xapp_gen.logger.info("[xAppMonControlContainer] subscription failed: {}".format(json_data))
+
+    def start(self):
+        time.sleep(5)  # we need to wait the registration of RMR rule -> no callback defined in the osc framework
+
+        # Obtain gnb info
+        self.selected_gnb, gnb_info = self.xapp_gen.get_selected_e2node_info(self.gnb_target)
+        if not self.selected_gnb:
+            self.xapp_gen.logger.info("[Main] Terminating xapp")
+            self.kpm_func.terminate(signal.SIGTERM, None)
+            return
+
+        # Getting plmn_identity
+        plmn_id = gnb_info["globalNbId"]["plmnId"]
+        nr_cell_id = gnb_info["globalNbId"]["nbId"]
+
+        self.xapp_gen.logger.info("[xAppMonControlContainer] gnb target plmn identity: {}, nr_cell_id: {}".format(plmn_id, nr_cell_id))
+        self.rc_func.set_plmn_identity(plmn_id)
+
+        # Get kpm data
+        ran_function_description = self.kpm_func.get_ran_function_description(json_ran_info=gnb_info)
+        func_def_dict = ran_function_description.get_dict_of_values()
+
+        # Get RC function
+        self.rc_func_desc = self.rc_func.get_ran_function_description(json_ran_info=gnb_info)
+        self.rc_func_desc.print_rc_functions()
+
+        func_def_sub_dict = {}
+        selected_format = format_action_def_e.END_ACTION_DEFINITION
+        if len(func_def_dict[format_action_def_e.FORMAT_4_ACTION_DEFINITION]) == 0:
+            selected_format = format_action_def_e.FORMAT_1_ACTION_DEFINITION
         else:
-            xapp.logger.debug("[RCControlBase] This is not an RC message [{}]".format(summary[rmr.RMR_MS_MSG_TYPE]))
-        self._xapp_handler.handle(xapp, summary, sbuf)
-        # xapp.rmr_free(sbuf)
-    
-    def get_ran_function_description(self, json_ran_info):
-        """
-        Get decoded ran function description
-        Parameters:
-        ----------
-        json_ran_info (json obj): json object obtained when by the get_ran_info function
+            selected_format = format_action_def_e.FORMAT_4_ACTION_DEFINITION
+        func_def_sub_dict[selected_format] = func_def_dict[selected_format]
 
-        """
-        if not json_ran_info:
-            self.logger.info("[RCControlBase] json_ran_info object None value not admitted!")
+        ev_trigger_tuple = (0, self.event_trigger)
+        status = self.kpm_func.subscribe(gnb=self.selected_gnb, ev_trigger=ev_trigger_tuple, func_def=func_def_sub_dict, ran_period_ms=1000, sst=self.sst, sd=self.sd)
+
+        if status != 201:
+            self.xapp_gen.logger.error("[xAppMonControlContainer] Error subscribing to gNB {}: {}".format(self.gnb.inventory_name, status))
+            self.kpm_func.terminate(signal.SIGTERM, None)
             return
 
-        for ran_func in json_ran_info["gnb"]["ranFunctions"]: 
-            if ran_func["ranFunctionId"] == 3:
-                # selecting rc action
-                ran_function_definition = ran_func["ranFunctionDefinition"]
-                break
-        self.logger.info(ran_function_definition)
-        # Decoding RAN function Definition
-        self.rc_function_def_wrapper.set_hex(hex=ran_function_definition)
-        
-        func_def_obj = self.rc_function_def_wrapper.decode()
-        return func_def_obj
+        # Running xApp Thread
+        self.xapp_gen.run()
 
-    def send(self, e2_node_id, ran_func_dsc: funcdef.RCFuncDef, ue_id_struct=None, control_action_id=1):
-        """
-        Sends a Control Request.
+def main(args):
+    xapp_gen = xDevSMRMRXapp("0.0.0.0", route_file=args.route_file)
+    xapp_gen.logger.set_level(string_to_level[args.log_level])
+    xapp_container = xAppMonControlContainer(xapp_gen, args.gnb_target, args.event_trigger, args.sst, args.sd, args.plmn, args.nr_cell_id)
+    xapp_container.start()
 
-        Parameters:
-        - e2_node_id: Target E2 node identifier
-        - ran_func_dsc: Decoded RC function definition
-        - ue_id: Optional UE identifier; if None, uses a mock one
-        """
-        if ue_id_struct is None:
-            if not self.ue_id_type:
-                self.logger.info("[RCControlBase] using mock ue_id")
-                ue_id_struct = self.get_mock_ue_id(ran_ue_id=self.ue_id)
-            else:
-                self.logger.info("[RCControlBase] using mock du_ue_id")
-                ue_id_struct = self.get_mock_du_ue_id(ran_ue_id=self.ue_id)
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="ho xApp")
 
-        if not ran_func_dsc.ctrl:
-            # TODO Add error message
-            return
-        ctrl_descr = ran_func_dsc.ctrl.contents 
-        
-        self.style = next(
-        (
-            s for s in ctrl_descr.seq_ctrl_style[:ctrl_descr.sz_seq_ctrl_style]
-            if bytes(np.ctypeslib.as_array(s.name.buf, shape=(s.name.len,))).decode('utf-8') == self.service_style_name),
-            None
-        )
-
-        if self.style is None:
-            self.logger.error("{} style not supported".format(self.service_style_name))
-            return
-
-        self.logger.info("{} style supported generating message".format(self.service_style_name))
-
-        self.generate_control_request(ue_id_struct=ue_id_struct, control_action_id=control_action_id)
-
-        self.wrapper.print_ctrl_req()
-
-        rc_ctrl_req_enc = self.wrapper.encode()
-
-        hdr_byte_array = rc_ctrl_req_enc.hdr_encoded.to_bytes()
-        ctrl_msg_byte_array = rc_ctrl_req_enc.msg_encoded.to_bytes()
-
-        self.logger.info("[RCControlBase] hdr encoded: {}".format(hdr_byte_array))
-        self.logger.info("[RCControlBase] ctrl encoded: {}".format(ctrl_msg_byte_array))
-        self.send_control_request_rmr(e2_node_id=e2_node_id,
-                                        control_header=hdr_byte_array,
-                                        control_message=ctrl_msg_byte_array)
-
-
-    def send_control_request_rmr(self, e2_node_id, control_header: bytes, control_message: bytes, call_process_id: bytes=b"", requestor_id=1, control_ack_request=1, request_sequence_number=0):
-        
-        rc_ctrl_rec_msg = ControlRequestMsg()
-        size, payload = rc_ctrl_rec_msg.encode(call_process_id=call_process_id,
-                                               requestor_id=requestor_id,
-                                               control_ack_request=control_ack_request,
-                                               request_sequence_number=request_sequence_number,
-                                               control_header=control_header,
-                                               control_message=control_message,
-                                               ran_function_id=3)
-
-        self.logger.info("[RCControlBase] Sending RCControlRequest Message: {} ({})".format(size, payload))
-        sbuf = rmr.rmr_alloc_msg(vctx=self._mrc, size=len(payload), mtype=Values.RIC_CONTROL_REQ)
-        rmr.set_payload_and_length(payload,sbuf)
-        rmr.generate_and_set_transaction_id(sbuf)
-        sbuf.contents.state = 0
-        sbuf.contents.mtype = Values.RIC_CONTROL_REQ
-        sbuf.contents.sub_id = -1
-        self.logger.info("[RCControlBase] E2 node id: {}".format(e2_node_id.encode("utf8")))
-        rmr.rmr_set_meid(sbuf, e2_node_id.encode("utf8"))
-        sbuf = rmr.rmr_send_msg(self._mrc, sbuf)
-        self.logger.info("[RCControlBase] Message Sent")
-
-    def add_rmr_rule(self):
-        """
-        Add RMR rule for control messages
-        """
-        # TODO
-        self.logger.info("[RCControlBase] Adding RMR rule for control messages")
-    
-    def delete_rmr_rule(self):
-        """
-        Delete RMR rule for control messages
-        """
-        # TODO
-        self.logger.info("[RCControlBase] Deleting RMR rule for control messages")
-
-    ########## Temporary mock functions for UE ID ##########
-    def get_mock_du_ue_id(self, ran_ue_id: ctypes.c_uint32) -> kpmmsg.ue_id_e2sm_t:
-        ue_id = kpmmsg.ue_id_e2sm_t()
-        ue_id.type = kpmmsg.ue_id_e2sm_e.GNB_DU_UE_ID_E2SM
-        
-        gnb_du = kpmmsg.gnb_du_e2sm_t()
-
-        gnb_du.gnb_cu_ue_f1ap = ran_ue_id
-        # gnb_du.ran_ue_id = 0 # We don't have this information in KPM messages in srs
-
-        ue_id.union.gnb_du = gnb_du
-        
-        return ue_id
-    
-    def get_mock_ue_id(self, ran_ue_id: ctypes.c_ulong=1) -> kpmmsg.ue_id_e2sm_t:
-        ue_id = kpmmsg.ue_id_e2sm_t()
-        ue_id.type = ctrlhdr.ue_id_e2sm_e.GNB_UE_ID_E2SM
-        
-        gnb_mono = kpmmsg.gnb_e2sm_t()
-        gnb_mono.amf_ue_ngap_id = 9
-        
-        # guami
-        plmn_id = kpmmsg.e2sm_plmn_t()
-        plmn_id.mcc = 1
-        plmn_id.mnc = 1
-        plmn_id.mnc_digit_len = 2 
-        guami = kpmmsg.guami_t()
-        guami.plmn_id = plmn_id
-        guami.amf_region_id = 1
-        guami.amf_set_id = 1
-        guami.amf_ptr = 1
-        gnb_mono.guami = guami
-
-        gnb_mono.gnb_cu_ue_f1ap_lst_len = 0
-        gnb_mono.gnb_cu_cp_ue_e1ap_lst_len = 0
-        gnb_mono.ran_ue_id = ctypes.pointer(ctypes.c_ulong(ran_ue_id))
-
-        # gnb_pointer = ctypes.pointer(gnb_mono)
-
-        ue_id.union.gnb = gnb_mono
-
-        return ue_id
-    ########## ############################## ##########
-
-    def terminate(self, signum, frame):
-        self.logger.info("[RCControlBase] Terminating xApp")
-        self.delete_rmr_rule()
-
-        self._xapp_handler.terminate(signum, frame)
-    
-    
-    def generate_control_request(self, ue_id_struct, control_action_id=1):
-        # defined in the subclasses -> depending on the type of control requested
-        pass
+    parser.add_argument("-r", "--route_file", metavar="<route_file>",
+                        help="path of xApp route file",
+                        type=str, default="./config/uta_rtg.rt")
+    parser.add_argument("-p", "--plmn", metavar="<plmn>",
+                        help="PLMN ID", type=str, default="00F110")
+    parser.add_argument("-n", "--nr_cell_id", metavar="<nr_cell_id>",
+                        help="NR Cell ID", type=str, default="00000000000000000000111000000001")
+    parser.add_argument("-e", "--event_trigger", metavar="<event_trigger_period>",
+                        help="event trigger period in seconds",
+                        type=int, default=1)
+    parser.add_argument("-s", "--sst", metavar="<sst>",
+                        help="SST", type=int, default=1)
+    parser.add_argument("-l", "--log_level", metavar="<log_level>",
+                        help="Log level", type=str, default="INFO")
+    parser.add_argument("-d", "--sd", metavar="<sd>",
+                        help="SD", type=int, default=0)
+    parser.add_argument("-g", "--gnb_target", metavar="<gnb_target>",
+                        help="gNB to subscribe to",
+                        type=str)
+                        
+    args = parser.parse_args()
+    main(args)
