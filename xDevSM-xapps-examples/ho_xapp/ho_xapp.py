@@ -102,7 +102,6 @@ class xAppMonControlContainer():
             print(meas_report_ue)
             # ue id
             ue_id = self.kpm_func.get_ue_id(meas_report_ue.ue_meas_report_lst)
-            print("ue_id got: {}".format(ue_id))
 
         self.xapp_gen.logger.info("[xAppMonControlContainer]gnb: {}, sender_name: {}, ue: {}".format(gnbid, sender_name, ue_id))
 
@@ -113,13 +112,12 @@ class xAppMonControlContainer():
             self.rc_func.set_plmn_identity(self.dest_plmn_identity)
             self.rc_func.send(e2_node_id=self.selected_gnb.inventory_name,
                             ran_func_dsc=self.rc_func_desc,
-                            ue_id=meas_report_ue.ue_meas_report_lst,  
+                            ue_id_struct=meas_report_ue.ue_meas_report_lst,  
                             control_action_id=1)
             self.kpm_func.terminate(signal.SIGTERM, None)
 
     def sub_failed_callback(self, json_data):
         self.xapp_gen.logger.info("[xAppMonControlContainer] subscription failed: {}".format(json_data))
-        self.kpm_func.terminate(signal.SIGTERM, None)
 
     def start(self):
         time.sleep(5)  # we need to wait the registration of RMR rule -> no callback defined in the osc framework
@@ -141,7 +139,6 @@ class xAppMonControlContainer():
         # Get kpm data
         ran_function_description = self.kpm_func.get_ran_function_description(json_ran_info=gnb_info)
         func_def_dict = ran_function_description.get_dict_of_values()
-        print("KPM Function Definition Dictionary: {}".format(func_def_dict))
 
         # Get RC function
         self.rc_func_desc = self.rc_func.get_ran_function_description(json_ran_info=gnb_info)
@@ -154,7 +151,7 @@ class xAppMonControlContainer():
         else:
             selected_format = format_action_def_e.FORMAT_4_ACTION_DEFINITION
         func_def_sub_dict[selected_format] = func_def_dict[selected_format]
-        print("Selected Format for actinon definition subscription: {}".format(selected_format))
+
         ev_trigger_tuple = (0, self.event_trigger)
         status = self.kpm_func.subscribe(gnb=self.selected_gnb, ev_trigger=ev_trigger_tuple, func_def=func_def_sub_dict, ran_period_ms=1000, sst=self.sst, sd=self.sd)
 
