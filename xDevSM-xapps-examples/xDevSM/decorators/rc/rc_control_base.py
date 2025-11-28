@@ -18,7 +18,8 @@ import sm_framework.py_oran.rc.RCControlHdr as ctrlhdr
 import sm_framework.py_oran.kpm.KpmIndicationMsg as kpmmsg
 
 class RCControlBase(BaseXDevSMWrapper):
-    def __init__(self, xapp_handler, logger, server, xapp_name, rmr_port, mrc, http_port, pltnamespace, app_namespace, mock_du_ue_id=False):
+    def __init__(self, xapp_handler, logger, server, xapp_name, rmr_port, mrc, http_port, pltnamespace, app_namespace, ue_id_type=None, ue_id=None):
+
         super().__init__(xapp_handler, logger, server)
         
         # xApps parameters
@@ -29,18 +30,17 @@ class RCControlBase(BaseXDevSMWrapper):
         self.pltnamespace = pltnamespace
         self.app_namespace = app_namespace
 
+        # ue id parameters
+        self.ue_id_type = ue_id_type
+        self.ue_id = ue_id
+
         # protocol stack parameters
-        self.mock_du_ue_id = mock_du_ue_id
 
         self.rc_function_def_wrapper = funcdef.RCFuncDefWrapper(hex="")
-        self.wrapper = ctrlReq.RCControlReqWrapper(logger=self.logger)
+        self.wrapper = ctrlReq.RCControlReqWrapper()
         self.service_style_name = None
         self.style = None
         self.add_rmr_rule()
-        print("Xapp {} initialized on RMR port {}".format(self.xapp_name, self.rmr_port))
-        print("Full parameters: xapp_name={}, rmr_port={}, http_port={}, pltnamespace={}, app_namespace={}, mock_du_ue_id={}".format(
-            self.xapp_name, self.rmr_port, self.http_port, self.pltnamespace, self.app_namespace, self.mock_du_ue_id
-        ))
     
     
     def handle(self, xapp, summary, sbuf):
@@ -63,8 +63,6 @@ class RCControlBase(BaseXDevSMWrapper):
         json_ran_info (json obj): json object obtained when by the get_ran_info function
 
         """
-        self.logger.info("[RCControlBase] Getting RAN function description for RC")
-
         if not json_ran_info:
             self.logger.info("[RCControlBase] json_ran_info object None value not admitted!")
             return
@@ -79,10 +77,9 @@ class RCControlBase(BaseXDevSMWrapper):
         self.rc_function_def_wrapper.set_hex(hex=ran_function_definition)
         
         func_def_obj = self.rc_function_def_wrapper.decode()
-        print("Function definition object: {}".format(func_def_obj))
         return func_def_obj
 
-    def send(self, e2_node_id, ran_func_dsc: funcdef.RCFuncDef, ue_id=None, control_action_id=1):
+    def send(self, e2_node_id, ran_func_dsc: funcdef.RCFuncDef, ue_id_struct=None, control_action_id=1):
         """
         Sends a Control Request.
 
@@ -91,35 +88,19 @@ class RCControlBase(BaseXDevSMWrapper):
         - ran_func_dsc: Decoded RC function definition
         - ue_id: Optional UE identifier; if None, uses a mock one
         """
-        self.logger.info("[RCControlBase] Sending Control Request to E2 node ID: {}".format(e2_node_id))
-        self.logger.debug("[RCControlBase] RAN Function Description: {}".format(ran_func_dsc))
-        self.logger.debug("[RCControlBase] UE ID: {}".format(ue_id))
-
-        if ue_id is None:
-            if not self.mock_du_ue_id:
+        if ue_id_struct is None:
+            if not self.ue_id_type:
                 self.logger.info("[RCControlBase] using mock ue_id")
-                ue_id = self.get_mock_ue_id()
+                ue_id_struct = self.get_mock_ue_id(ran_ue_id=self.ue_id)
             else:
                 self.logger.info("[RCControlBase] using mock du_ue_id")
-                ue_id = self.get_mock_du_ue_id()
+                ue_id_struct = self.get_mock_du_ue_id(ran_ue_id=self.ue_id)
 
         if not ran_func_dsc.ctrl:
             # TODO Add error message
-            self.logger.error("[RCControlBase] RAN Function Description does not contain control description")
             return
-
         ctrl_descr = ran_func_dsc.ctrl.contents 
-        ran_styles = []
-        for idx in range(ctrl_descr.sz_seq_ctrl_style):
-            style_obj = ctrl_descr.seq_ctrl_style[idx]
-            style_name = ""
-            if style_obj.name and style_obj.name.buf and style_obj.name.len:
-                style_name = bytes(
-                    np.ctypeslib.as_array(style_obj.name.buf, shape=(style_obj.name.len,))
-                ).decode("utf-8")
-            ran_styles.append({"type": style_obj.style_type, "name": style_name})
-        self.logger.info("[RCControlBase] RAN function styles: {}".format(ran_styles))
-        self.logger.info("[RCControlBase] Local RC style map: {}".format(ctrlReq.ric_style_types))
+        
         self.style = next(
         (
             s for s in ctrl_descr.seq_ctrl_style[:ctrl_descr.sz_seq_ctrl_style]
@@ -132,8 +113,8 @@ class RCControlBase(BaseXDevSMWrapper):
             return
 
         self.logger.info("{} style supported generating message".format(self.service_style_name))
-        self.logger.info("[RCControlBase] Generating control request")
-        self.generate_control_request(ue_id=ue_id, control_action_id=control_action_id)
+
+        self.generate_control_request(ue_id_struct=ue_id_struct, control_action_id=control_action_id)
 
         self.wrapper.print_ctrl_req()
 
@@ -187,13 +168,13 @@ class RCControlBase(BaseXDevSMWrapper):
         self.logger.info("[RCControlBase] Deleting RMR rule for control messages")
 
     ########## Temporary mock functions for UE ID ##########
-    def get_mock_du_ue_id(self) -> kpmmsg.ue_id_e2sm_t:
+    def get_mock_du_ue_id(self, ran_ue_id: ctypes.c_uint32) -> kpmmsg.ue_id_e2sm_t:
         ue_id = kpmmsg.ue_id_e2sm_t()
         ue_id.type = kpmmsg.ue_id_e2sm_e.GNB_DU_UE_ID_E2SM
         
         gnb_du = kpmmsg.gnb_du_e2sm_t()
 
-        gnb_du.gnb_cu_ue_f1ap = 0
+        gnb_du.gnb_cu_ue_f1ap = ran_ue_id
         # gnb_du.ran_ue_id = 0 # We don't have this information in KPM messages in srs
 
         ue_id.union.gnb_du = gnb_du
@@ -237,6 +218,6 @@ class RCControlBase(BaseXDevSMWrapper):
         self._xapp_handler.terminate(signum, frame)
     
     
-    def generate_control_request(self, ue_id, control_action_id=1):
+    def generate_control_request(self, ue_id_struct, control_action_id=1):
         # defined in the subclasses -> depending on the type of control requested
         pass

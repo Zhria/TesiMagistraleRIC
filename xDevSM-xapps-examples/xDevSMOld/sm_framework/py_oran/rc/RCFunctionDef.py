@@ -233,7 +233,7 @@ class RCFuncDef(ctypes.Structure):
                 function_def = ev_trig_obj.seq_ev_trg_style[i]
                 function_def_array = bytes(np.ctypeslib.as_array(function_def.name.buf, shape = (function_def.name.len,)))
                 function_def_decoded = function_def_array.decode('utf-8')
-                print(function_def_decoded)
+                print("{}".format(function_def_decoded))
         
         if self.report:
             print("[Report]")
@@ -243,7 +243,7 @@ class RCFuncDef(ctypes.Structure):
                 function_def = report_obj.seq_report_sty[i]
                 function_def_array = bytes(np.ctypeslib.as_array(function_def.name.buf, shape = (function_def.name.len,)))
                 function_def_decoded = function_def_array.decode('utf-8')
-                print(function_def_decoded)
+                print("{}".format(function_def_decoded))
 
         if self.insert:
             print("[Insert]: TBD")
@@ -256,7 +256,7 @@ class RCFuncDef(ctypes.Structure):
                 function_def = ctrl_obj.seq_ctrl_style[i]
                 function_def_array = bytes(np.ctypeslib.as_array(function_def.name.buf, shape = (function_def.name.len,)))
                 function_def_decoded = function_def_array.decode('utf-8')
-                print(function_def_decoded)
+                print("{}".format(function_def_decoded))
                 print("hdr frmt: {}".format(function_def.hdr))
                 print("msg frmt: {}".format(function_def.msg))
                 for j in range(0, function_def.sz_seq_ctrl_act):

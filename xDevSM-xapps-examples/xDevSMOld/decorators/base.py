@@ -25,4 +25,3 @@ class BaseXDevSMWrapper(BasexDevSMXapp):
 
     def get_ran_function_description(self, json_ran_info):
         self._xapp_handler.get_ran_function_description(json_ran_info)
-

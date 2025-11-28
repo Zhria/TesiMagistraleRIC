@@ -13,7 +13,9 @@ class Values:
     RIC_CONTROL_ACK = 12041
     RIC_CONTROL_FAILURE = 12042
     ACTION_TYPE = "report"
-    GENERAL_PATH = "http://service-{}-{}-http.{}:{}" # change this with the ip address if not found
+    #GENERAL_PATH = "http://service-{}-{}-http.ricplt:{}" # change this with the ip address if not found
+    GENERAL_PATH = "http://service-{}-{}-http.{}:{}"
+    PLT_NAMESPACE = "ricplt"
     SUBSCRIPTION_SERVICE = "submgr"
     SUBSCRIPTION_PORT = "8088"
     E2MGR_SERVICE = "e2mgr"
