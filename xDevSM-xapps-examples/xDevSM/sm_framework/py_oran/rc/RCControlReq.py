@@ -643,7 +643,8 @@ class RCControlReqWrapper():
 
         self.control_req.hdr.format = e2sm_rc_ctrl_hdr_e.FORMAT_1_E2SM_RC_CTRL_HDR
         self.control_req.hdr.union.frmt_1 = hdr.e2sm_rc_ctrl_hdr_frmt_1_t()
-        self.control_req.hdr.union.frmt_1.ric_style_type = ric_style_types[style_decoded]
+        print(f"Connected mode mobility style decoded: {style_decoded}, style_type from RAN definition: {style.style_type}")
+        self.control_req.hdr.union.frmt_1.ric_style_type = style.style_type
         if ue_id is None:
             print("UE ID not provided")
             return
@@ -732,6 +733,5 @@ class RCControlReqWrapper():
         #     print("tempting freeing msg")
         #     self.free_msg(self.control_req.msg)
     
-
 
 
