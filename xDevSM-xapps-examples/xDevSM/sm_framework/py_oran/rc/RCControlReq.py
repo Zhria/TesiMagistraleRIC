@@ -105,6 +105,8 @@ ho_ids = {
     "Secondary Cell ID": 21
 }
 
+ho_id_to_name = {v: k for k, v in ho_ids.items()}
+
 class RCControlReq(ctypes.Structure):
     _fields_ = [
         ("hdr", hdr.RCControlHdr),
@@ -165,6 +167,80 @@ class RCControlReqWrapper():
 
         return ret
 
+
+
+    def print_connected_mode_mobility_control(self):
+        print("Connected Mode mobility control")
+        frmt_1 = self.control_req.msg.union.frmt_1
+        for i in range(0, frmt_1.sz_ran_param):
+            ran_param = frmt_1.ran_param[i]
+            param_name = ho_id_to_name.get(ran_param.ran_param_id, "Unknown")
+            print("Ran Param ID: {} ({})".format(ran_param.ran_param_id, param_name))
+            print("Ran Param Val Type: {}".format(ran_param.ran_param_val.type.value))
+            if ran_param.ran_param_id == ho_ids["Target Primary Cell ID"] and ran_param.ran_param_val.type.value == ran_parameter_val_type_e.STRUCTURE_RAN_PARAMETER_VAL_TYPE:
+                self._print_target_primary_cell(ran_param.ran_param_val.union.strct)
+
+    def _print_target_primary_cell(self, target_primary_cell_ptr: ctypes.POINTER(ctrl.ran_param_struct_t)):
+        if not target_primary_cell_ptr:
+            print("Target Primary Cell structure not present")
+            return
+
+        target_primary_cell = target_primary_cell_ptr.contents
+        for j in range(0, target_primary_cell.sz_ran_param_struct):
+            param = target_primary_cell.ran_param_struct[j]
+            param_name = ho_id_to_name.get(param.ran_param_id, "Unknown")
+            print("-> Param id: {} ({})".format(param.ran_param_id, param_name))
+            print("-> Param type: {}".format(param.ran_param_val.type.value))
+
+            if param.ran_param_id == ho_ids["CHOICE Target Cell"] and param.ran_param_val.type.value == ran_parameter_val_type_e.STRUCTURE_RAN_PARAMETER_VAL_TYPE:
+                self._print_target_cell_choice(param.ran_param_val.union.strct)
+
+    def _print_target_cell_choice(self, target_cell_choice_ptr: ctypes.POINTER(ctrl.ran_param_struct_t)):
+        if not target_cell_choice_ptr:
+            print("Target Cell choice structure not present")
+            return
+
+        target_cell_choice = target_cell_choice_ptr.contents
+        for k in range(0, target_cell_choice.sz_ran_param_struct):
+            param = target_cell_choice.ran_param_struct[k]
+            param_name = ho_id_to_name.get(param.ran_param_id, "Unknown")
+            print("--> Choice Param id: {} ({})".format(param.ran_param_id, param_name))
+            print("--> Choice Param type: {}".format(param.ran_param_val.type.value))
+
+            if param.ran_param_id == ho_ids["NR Cell"] and param.ran_param_val.type.value == ran_parameter_val_type_e.STRUCTURE_RAN_PARAMETER_VAL_TYPE:
+                self._print_nr_cell(param.ran_param_val.union.strct)
+
+    def _print_nr_cell(self, nr_cell_ptr: ctypes.POINTER(ctrl.ran_param_struct_t)):
+        if not nr_cell_ptr:
+            print("NR Cell structure not present")
+            return
+
+        nr_cell = nr_cell_ptr.contents
+        for idx in range(0, nr_cell.sz_ran_param_struct):
+            param = nr_cell.ran_param_struct[idx]
+            param_name = ho_id_to_name.get(param.ran_param_id, "Unknown")
+            print("---> NR Param id: {} ({})".format(param.ran_param_id, param_name))
+            print("---> NR Param type: {}".format(param.ran_param_val.type.value))
+
+            if param.ran_param_id == ho_ids["NR CGI"] and param.ran_param_val.type.value == ran_parameter_val_type_e.ELEMENT_KEY_FLAG_FALSE_RAN_PARAMETER_VAL_TYPE:
+                nrcgi_value_ptr = param.ran_param_val.union.flag_false
+                if not nrcgi_value_ptr:
+                    print("---> NR CGI value missing")
+                    continue
+
+                nrcgi_value = nrcgi_value_ptr.contents
+                if nrcgi_value.type == ran_parameter_value_e.OCTET_STRING_RAN_PARAMETER_VALUE:
+                    nrcgi_bytes = nrcgi_value.union.octet_str_ran.to_bytes()
+                    print("---> NR CGI (hex): {}".format(nrcgi_bytes.hex()))
+                    if len(nrcgi_bytes) >= 3:
+                        plmn_hex = nrcgi_bytes[:3].hex()
+                        nr_cell_hex = nrcgi_bytes[3:].hex()
+                        nr_cell_bin = bin(int.from_bytes(nrcgi_bytes[3:], byteorder='big'))[2:].zfill((len(nrcgi_bytes) - 3) * 8)
+                        print("---> PLMN: {}".format(plmn_hex))
+                        print("---> NR Cell ID: {} (bin {})".format(nr_cell_hex, nr_cell_bin))
+                else:
+                    print("---> Unexpected NR CGI value type: {}".format(nrcgi_value.type.value))
+
     def print_radio_bearer_control(self):
         print("Radio Bearer Control")
         for i in range(0, self.control_req.msg.union.frmt_1.sz_ran_param):
@@ -200,8 +276,10 @@ class RCControlReqWrapper():
         # Header
         print("--- RC Control Request Header ---")
         print("Format: {}".format(self.control_req.hdr.format.value))
-        print("Style: {}".format(self.control_req.hdr.union.frmt_1.ric_style_type))
-        print("Control Action ID: {}".format(self.control_req.hdr.union.frmt_1.ctrl_act_id))
+        if self.control_req.hdr.format.value == e2sm_rc_ctrl_hdr_e.FORMAT_1_E2SM_RC_CTRL_HDR:
+            print("Style: {}".format(self.control_req.hdr.union.frmt_1.ric_style_type))
+            print("Control Action ID: {}".format(self.control_req.hdr.union.frmt_1.ctrl_act_id))
+            self._print_ue_in_hdr(self.control_req.hdr.union.frmt_1.ue_id)
 
         # TODO: Needs refactoring based on the type of control action
         # Message 
@@ -211,8 +289,40 @@ class RCControlReqWrapper():
             self.print_radio_bearer_control()
         elif self.control_req.hdr.union.frmt_1.ric_style_type == ric_style_types["Radio Resource Allocation Control"]:
             self.print_radio_resource_allocation_control()
+        elif self.control_req.hdr.union.frmt_1.ric_style_type == ric_style_types["Connected mode mobility control"]:
+            self.print_connected_mode_mobility_control()
         else:
             print("Log info not implemented for this type of control action")
+
+    def _print_ue_in_hdr(self, ue_id: hdr.ue_id_e2sm_t):
+        print("UE ID Type: {}".format(ue_id.type.value))
+        if ue_id.type.value == ue_id_e2sm_e.GNB_UE_ID_E2SM:
+            gnb = ue_id.union.gnb
+            print("UE (GNB): amf_ue_ngap_id {}".format(gnb.amf_ue_ngap_id))
+            if gnb.ran_ue_id:
+                print("UE (GNB): ran_ue_id {}".format(gnb.ran_ue_id.contents.value))
+        elif ue_id.type.value == ue_id_e2sm_e.GNB_DU_UE_ID_E2SM:
+            gnb_du = ue_id.union.gnb_du
+            print("UE (GNB DU): gnb_cu_ue_f1ap {}".format(gnb_du.gnb_cu_ue_f1ap))
+            if gnb_du.ran_ue_id:
+                print("UE (GNB DU): ran_ue_id {}".format(gnb_du.ran_ue_id.contents.value))
+        elif ue_id.type.value == ue_id_e2sm_e.GNB_CU_UP_UE_ID_E2SM:
+            gnb_cu_up = ue_id.union.gnb_cu_up
+            print("UE (GNB CU-UP): gnb_cu_cp_ue_e1ap {}".format(gnb_cu_up.gnb_cu_cp_ue_e1ap))
+            if gnb_cu_up.ran_ue_id:
+                print("UE (GNB CU-UP): ran_ue_id {}".format(gnb_cu_up.ran_ue_id.contents.value))
+        elif ue_id.type.value == ue_id_e2sm_e.NG_ENB_UE_ID_E2SM:
+            ng_enb = ue_id.union.ng_enb
+            print("UE (NG-ENB): amf_ue_ngap_id {}".format(ng_enb.amf_ue_ngap_id))
+        elif ue_id.type.value == ue_id_e2sm_e.NG_ENB_DU_UE_ID_E2SM:
+            ng_enb_du = ue_id.union.ng_enb_du
+            print("UE (NG-ENB DU): ng_enb_cu_ue_w1ap_id {}".format(ng_enb_du.ng_enb_cu_ue_w1ap_id))
+        elif ue_id.type.value == ue_id_e2sm_e.EN_GNB_UE_ID_E2SM:
+            en_gnb = ue_id.union.en_gnb
+            print("UE (EN-GNB): enb_ue_x2ap_id {}".format(en_gnb.enb_ue_x2ap_id))
+        elif ue_id.type.value == ue_id_e2sm_e.ENB_UE_ID_E2SM:
+            enb = ue_id.union.enb
+            print("UE (ENB): mme_ue_s1ap_id {}".format(enb.mme_ue_s1ap_id))
         
 
     def fill_DRB_param(self, index, drb_id=1):
@@ -733,5 +843,3 @@ class RCControlReqWrapper():
         #     print("tempting freeing msg")
         #     self.free_msg(self.control_req.msg)
     
-
-
