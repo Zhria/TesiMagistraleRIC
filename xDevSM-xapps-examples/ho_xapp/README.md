@@ -2,7 +2,7 @@
 
 Example of a Radio Resource Connected Mobility Control (RC) xApp built using the xDevSM framework.
 
-This xApp subscribes to a target E2 node (or the first available one) and triggers a handover procedure for the first UE listed within the source E2 node, transferring it to the selected target E2 node.
+This xApp subscribes to all CONNECTED E2 nodes exposing both KPM (ranFunctionId=2) and RC (ranFunctionId=3), collects per-node KPM indications, and triggers a handover to move a UE from the most loaded E2 node to the least loaded one.
 
 
 
@@ -22,5 +22,5 @@ This xApp subscribes to a target E2 node (or the first available one) and trigge
                         Log level
   -d <sd>, --sd <sd>    SD
   -g <gnb_target>, --gnb_target <gnb_target>
-                        gNB to subscribe to (source gnb)
+                        comma-separated allowlist of gNB inventory names (default: all CONNECTED)
 ```
