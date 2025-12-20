@@ -117,6 +117,14 @@ class xAppMonControlContainer():
         target = min(targets, key=sort_key)
         return source, target
 
+    def _reset_all_counters(self) -> None:
+        for meid in self.subscribed_meids:
+            self.ind_count_by_meid[meid] = 0
+            self.last_ue_count_by_meid[meid] = None
+            self.unique_ue_ids_by_meid[meid] = set()
+            if meid in self.last_ue_struct_by_meid:
+                del self.last_ue_struct_by_meid[meid]
+
     def _try_send_handover(self) -> bool:
         if self.handover_sent or self.pending_handover is None:
             return False
@@ -154,8 +162,10 @@ class xAppMonControlContainer():
             ue_id_struct=ue_struct,
             control_action_id=1,
         )
+        self._reset_all_counters()
+        self.xapp_gen.logger.info("[xAppMonControlContainer] Reset all indication/UE counters after HO trigger")
         self.handover_sent = True
-        self.kpm_func.terminate(signal.SIGTERM, None)
+        #self.kpm_func.terminate(signal.SIGTERM, None)
         return True
 
     def ind_msg_handler(self, ind_hdr, ind_msg, meid):
