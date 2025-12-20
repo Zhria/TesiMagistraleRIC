@@ -5,6 +5,8 @@ import numpy as np
 import setup_imports
 
 from mdclogpy import Level
+from ricxappframe.xapp_frame import rmr
+from utils.constants import Values
 
 # import xDevSM base xapp
 from xDevSM.handlers.xDevSM_rmr_xapp import xDevSMRMRXapp
@@ -63,6 +65,7 @@ class xAppMonControlContainer():
                                             plmn_identity=plmn_identity,
                                             nr_cell_id=nr_cell_id
                                             )
+        self._wrap_rc_handle_for_reset()
         # Adding KPM functionality
         self.kpm_func = XappKpmFrame(self.rc_func, 
                                      self.xapp_gen.logger, 
@@ -81,6 +84,24 @@ class xAppMonControlContainer():
 
         signal.signal(signal.SIGINT, self.kpm_func.terminate)
         signal.signal(signal.SIGTERM, self.kpm_func.terminate)
+
+    def _reset_handover_state(self, reason: str) -> None:
+        self.pending_handover = None
+        self.handover_sent = False
+        self.xapp_gen.logger.info("[xAppMonControlContainer] Reset handover state after {}".format(reason))
+
+    def _wrap_rc_handle_for_reset(self) -> None:
+        original_rc_handle = self.rc_func.handle
+
+        def wrapped_rc_handle(xapp, summary, sbuf):
+            msg_type = summary[rmr.RMR_MS_MSG_TYPE]
+            if msg_type == Values.RIC_CONTROL_ACK:
+                self._reset_handover_state("RIC_CONTROL_ACK")
+            elif msg_type == Values.RIC_CONTROL_FAILURE:
+                self._reset_handover_state("RIC_CONTROL_FAILURE")
+            return original_rc_handle(xapp, summary, sbuf)
+
+        self.rc_func.handle = wrapped_rc_handle
 
     def _has_ran_function(self, gnb_info: dict, ran_function_id: int) -> bool:
         if not gnb_info:
