@@ -50,6 +50,7 @@ class xAppMonControlContainer():
 
         self.pending_handover = None  # (source_meid, target_meid)
         self.handover_sent = False
+        self.control_send_timestamp = None  # timing RC control request
         
         # Adding RC - HO functionality
         self.rc_func = ConnectedModeMobilityControl(self.xapp_gen,
@@ -96,8 +97,16 @@ class xAppMonControlContainer():
         def wrapped_rc_handle(xapp, summary, sbuf):
             msg_type = summary[rmr.RMR_MS_MSG_TYPE]
             if msg_type == Values.RIC_CONTROL_ACK:
+                if self.control_send_timestamp:
+                    rtt_ms = (time.time() - self.control_send_timestamp) * 1000
+                    self.xapp_gen.logger.info(f"[TIMING] RC Control RTT (ACK): {rtt_ms:.2f} ms")
+                    self.control_send_timestamp = None
                 self._reset_handover_state("RIC_CONTROL_ACK")
             elif msg_type == Values.RIC_CONTROL_FAILURE:
+                if self.control_send_timestamp:
+                    rtt_ms = (time.time() - self.control_send_timestamp) * 1000
+                    self.xapp_gen.logger.info(f"[TIMING] RC Control RTT (FAILURE): {rtt_ms:.2f} ms")
+                    self.control_send_timestamp = None
                 self._reset_handover_state("RIC_CONTROL_FAILURE")
             return original_rc_handle(xapp, summary, sbuf)
 
@@ -177,6 +186,8 @@ class xAppMonControlContainer():
         ))
         self.rc_func.set_nr_cell_id(nr_cell_id)
         self.rc_func.set_plmn_identity(plmn_id)
+        self.control_send_timestamp = time.time()
+        self.xapp_gen.logger.info(f"[TIMING] RC Control Request SENT at {self.control_send_timestamp}")
         self.rc_func.send(
             e2_node_id=source_meid,
             ran_func_dsc=rc_desc,
@@ -316,6 +327,7 @@ class xAppMonControlContainer():
                 self.xapp_gen.logger.error("[xAppMonControlContainer] Cannot decode RC function definition for {} - skipping".format(gnb.inventory_name))
                 continue
 
+            sub_start = time.time()
             status = self.kpm_func.subscribe(
                 gnb=gnb,
                 ev_trigger=ev_trigger_tuple,
@@ -324,6 +336,8 @@ class xAppMonControlContainer():
                 sst=self.sst,
                 sd=self.sd,
             )
+            sub_latency_ms = (time.time() - sub_start) * 1000
+            self.xapp_gen.logger.info(f"[TIMING] Subscription to {gnb.inventory_name}: {sub_latency_ms:.2f} ms (status={status})")
             if status != 201:
                 self.xapp_gen.logger.error("[xAppMonControlContainer] Error subscribing to gNB {} (status={}) - skipping".format(gnb.inventory_name, status))
                 continue
