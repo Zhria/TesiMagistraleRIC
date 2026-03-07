@@ -332,7 +332,7 @@ class xAppMonControlContainer():
                 gnb=gnb,
                 ev_trigger=ev_trigger_tuple,
                 func_def=func_def_sub_dict,
-                ran_period_ms=1000,
+                ran_period_ms=500,
                 sst=self.sst,
                 sd=self.sd,
             )
@@ -383,7 +383,7 @@ if __name__ == '__main__':
                         help="NR Cell ID (fallback if only 1 E2 node is available)", type=str, default="00000000000000000000111000000001")
     parser.add_argument("-e", "--event_trigger", metavar="<event_trigger_period>",
                         help="event trigger period in seconds",
-                        type=int, default=1)
+                        type=int, default=2)
     parser.add_argument("-s", "--sst", metavar="<sst>",
                         help="SST", type=int, default=1)
     parser.add_argument("-l", "--log_level", metavar="<log_level>",
