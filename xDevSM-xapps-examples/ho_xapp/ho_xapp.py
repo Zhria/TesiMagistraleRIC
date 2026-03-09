@@ -200,6 +200,89 @@ class xAppMonControlContainer():
         #self.kpm_func.terminate(signal.SIGTERM, None)
         return True
 
+    def _decode_meas_name(self, meas_info):
+        if meas_info.meas_type.type.value != meas_type_enum.NAME_MEAS_TYPE:
+            return None
+        meas_name = meas_info.meas_type.value.name
+        if not meas_name or not meas_name.buf or meas_name.len == 0:
+            return None
+        meas_name_bs = bytes(
+            np.ctypeslib.as_array(meas_name.buf, shape=(meas_name.len,))
+        )
+        return meas_name_bs.decode("utf-8")
+
+    def _decode_meas_value(self, meas_record):
+        if meas_record.value.value == meas_value_e.INTEGER_MEAS_VALUE:
+            return float(meas_record.union.int_val)
+        if meas_record.value.value == meas_value_e.REAL_MEAS_VALUE:
+            return float(meas_record.union.real_val)
+        return None
+
+    def _extract_kpm_samples(self, ind_msg_format_1):
+        samples = []
+        for sample_idx in range(ind_msg_format_1.meas_data_lst_len):
+            meas_data = ind_msg_format_1.meas_data_lst[sample_idx]
+            sample = {}
+            for record_idx in range(meas_data.meas_record_len):
+                if not ind_msg_format_1.meas_info_lst or record_idx >= ind_msg_format_1.meas_info_lst_len:
+                    continue
+                meas_info = ind_msg_format_1.meas_info_lst[record_idx]
+                meas_name = self._decode_meas_name(meas_info)
+                if meas_name is None:
+                    continue
+                meas_value = self._decode_meas_value(meas_data.meas_record_lst[record_idx])
+                if meas_value is None:
+                    continue
+                sample[meas_name] = meas_value
+            if sample:
+                samples.append(sample)
+        return samples
+
+    def _format_kpm_value(self, metric_name, metric_value):
+        if metric_name in ("DRB.UEThpDl", "DRB.UEThpUl"):
+            return "{:.3f} Mbps".format(metric_value / 1_000_000.0)
+        if metric_name in ("DRB.RlcSduTransmittedVolumeDL", "DRB.RlcSduTransmittedVolumeUL"):
+            return "{:.3f} kbit".format(metric_value)
+        if metric_name in ("DRB.RlcPacketDropRateDLDist", "DRB.RlcPacketLossRateULDist"):
+            return "{:.3f}%".format(metric_value)
+        return "{:.3f}".format(metric_value)
+
+    def _log_kpm_metrics(self, gnbid, ue_id, meas_report_ue):
+        ind_msg_format_1 = meas_report_ue.ind_msg_format_1
+        samples = self._extract_kpm_samples(ind_msg_format_1)
+        if not samples:
+            self.xapp_gen.logger.info(
+                "[KPM IND] gnb={} ue={} no decodable metrics in indication message".format(
+                    gnbid, ue_id
+                )
+            )
+            return
+
+        granularity_ms = None
+        if ind_msg_format_1.gran_period_ms:
+            granularity_ms = int(ind_msg_format_1.gran_period_ms.contents.value)
+
+        preferred_order = [
+            "DRB.UEThpDl",
+            "DRB.UEThpUl",
+            "DRB.RlcSduTransmittedVolumeDL",
+            "DRB.RlcSduTransmittedVolumeUL",
+            "DRB.RlcPacketDropRateDLDist",
+            "DRB.RlcPacketLossRateULDist",
+        ]
+
+        for sample_idx, sample in enumerate(samples):
+            metric_names = [name for name in preferred_order if name in sample]
+            metric_names.extend(sorted(name for name in sample.keys() if name not in preferred_order))
+            formatted_metrics = [
+                "{}={}".format(metric_name, self._format_kpm_value(metric_name, sample[metric_name]))
+                for metric_name in metric_names
+            ]
+            prefix = "[KPM IND] gnb={} ue={} sample={}".format(gnbid, ue_id, sample_idx)
+            if granularity_ms is not None:
+                prefix += " granularity_ms={}".format(granularity_ms)
+            self.xapp_gen.logger.info("{} {}".format(prefix, ", ".join(formatted_metrics)))
+
     def ind_msg_handler(self, ind_hdr, ind_msg, meid):
         """
         Handle the indication message received from the xApp
@@ -235,6 +318,7 @@ class xAppMonControlContainer():
                 ue_id = self.kpm_func.get_ue_id(ue_struct)
                 if ue_id is not None:
                     self.unique_ue_ids_by_meid[gnbid].add(int(ue_id))
+                self._log_kpm_metrics(gnbid, ue_id, meas_report_ue)
 
         if candidate_ue_struct is not None:
             self.last_ue_struct_by_meid[gnbid] = candidate_ue_struct
@@ -332,7 +416,7 @@ class xAppMonControlContainer():
                 gnb=gnb,
                 ev_trigger=ev_trigger_tuple,
                 func_def=func_def_sub_dict,
-                ran_period_ms=500,
+                ran_period_ms=1000,
                 sst=self.sst,
                 sd=self.sd,
             )
@@ -383,7 +467,7 @@ if __name__ == '__main__':
                         help="NR Cell ID (fallback if only 1 E2 node is available)", type=str, default="00000000000000000000111000000001")
     parser.add_argument("-e", "--event_trigger", metavar="<event_trigger_period>",
                         help="event trigger period in seconds",
-                        type=int, default=2)
+                        type=int, default=1)
     parser.add_argument("-s", "--sst", metavar="<sst>",
                         help="SST", type=int, default=1)
     parser.add_argument("-l", "--log_level", metavar="<log_level>",
